@@ -7,7 +7,7 @@ import PreviewPage from './pages/PreviewPage';
 
 const App: React.FC = () => {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/main">
       <ResumeProvider>
         <Routes>
           <Route path="/" element={<HomePage />} />
