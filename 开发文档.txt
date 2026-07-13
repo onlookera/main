@@ -1,0 +1,278 @@
+项目概述：
+开发一个纯前端的单页简历制作网站，用户可以在浏览器中直接选择模板、编辑简历内容、实时预览，并将简历导出为PDF文件。无需用户注册登录，所有数据保存在浏览器本地存储中。界面和交互需模仿市面上主流的简历制作网站（如Resume.com、Canva简历、Zety等），提供流畅的用户体验和丰富的模板选择。
+
+核心技术栈：
+
+框架：React + TypeScript（使用Vite作为构建工具）
+
+UI库：Tailwind CSS（用于快速构建响应式界面）
+
+状态管理：React Context + useReducer（管理简历数据、当前模板、颜色字体等全局状态）
+
+拖拽功能：@dnd-kit/core 和 @dnd-kit/sortable（用于模块排序）
+
+图标：lucide-react
+
+PDF导出：html2canvas + jspdf，或者使用 @react-pdf/renderer（推荐前者以实现更精确的像素级预览导出）
+
+表单处理：react-hook-form + zod（用于简历字段校验）
+
+模板预览：纯CSS/组件渲染，用A4纸比例（794px x 1123px）的容器模拟纸张
+
+路由设计（使用react-router-dom）：
+
+/ ：首页，展示模板选择列表和新建简历入口
+
+/editor ：简历编辑器（主要工作区），路由参数可带模板id和简历id，如 /editor?template=modern&resume=local_123
+
+/preview ：全屏预览页面（可选，实际编辑器内已有实时预览）
+
+核心功能清单：
+
+模板市场：
+
+提供至少5套不同风格的简历模板（如经典两栏、极简单栏、创意设计、时间轴、侧边栏等）。
+
+每个模板拥有不同的布局、字体、配色方案，并预设不同模块的排列顺序。
+
+用户点击模板卡片即可进入编辑器并应用该模板。
+
+模板数据结构定义布局类型（single-column, two-column, sidebar-left, sidebar-right等）、默认配色、字体、默认显示的模块列表。
+
+简历编辑器界面：
+
+左中右三栏布局：左侧为模块列表/添加面板，中间为A4纸实时预览，右侧为当前选中模块的详细编辑表单。
+
+中间预览区可滚动查看多页简历内容（支持自动分页感知，通过CSS page-break模拟）。
+
+支持拖拽调整模块在简历中的顺序，拖拽时预览实时更新。
+
+支持添加/删除模块：个人信息、求职意向、工作经历、教育经历、技能特长、项目经验、自我评价、证书荣誉、语言能力、自定义模块。
+
+每个模块可单独设置是否显示、标题名称、图标等。
+
+全局设置：整体配色（主色、背景色）、字体族（提供几个Google字体选择，通过link标签动态加载）、字号大小、页边距、段间距等，实时作用到所有模板样式。
+
+简历内容编辑：
+
+个人信息：姓名、职位头衔、邮箱、电话、地址、LinkedIn、GitHub、个人网站等，可上传头像（转base64存储）。
+
+工作经历/教育经历/项目经验等列表型模块：支持添加多条条目，每条包含标题、副标题、日期范围、地点、描述（富文本或纯文本，建议用支持简单Markdown的输入框，如加粗、斜体、列表）。描述支持多段落，自动换行。
+
+技能特长：支持标签式输入或条形图/评分展示，可根据模板不同以不同形式呈现（例如进度条、标签云、等级点）。
+
+所有输入字段都要实时反映到预览区，使用防抖更新状态，避免卡顿。
+
+实时预览：
+
+预览区严格按照A4纸比例渲染，背景白色，带阴影和页边距，模拟打印效果。
+
+当内容超过一页时，自动在预览区显示分页分割线，并生成多页连续显示。
+
+支持缩放控制（放大/缩小预览），但默认100%显示，容器可滚动。
+
+预览区中的文字和布局完全与编辑器状态同步。
+
+导出PDF：
+
+点击导出按钮，将当前简历的完整内容（所有页面）通过html2canvas截取每页区域，再用jsPDF按A4尺寸绘制，生成多页PDF。
+
+导出前需确保预览区缩放为100%，且一次性渲染全部页面（可临时关闭分页分割线，获取完整高度后分段）。
+
+导出的PDF包含用户设置的字体、颜色、布局，清晰度支持300dpi。
+
+支持直接下载，文件名为“姓名-简历.pdf”。
+
+本地存储与恢复：
+
+使用localStorage存储所有简历数据（以唯一ID标识），支持打开历史简历、另存为新简历、删除简历。
+
+编辑器首次加载时检查URL参数有无简历ID，无则创建新简历并使用所选模板默认数据。
+
+每次修改简历时自动保存到localStorage（带防抖），防止数据丢失。
+
+提供“我的简历”管理页面（在首页显示已有简历列表，可编辑、删除、复制）。
+
+响应式与交互细节：
+
+在桌面端正常使用三栏布局，在平板/手机端转为单栏切换视图（例如标签切换编辑、预览、设置）。
+
+工具提示、空状态提示、撤销/重做功能（使用简单的状态历史栈实现，记录简历数据快照）。
+
+提供重置模板到默认样式的功能（保留用户内容，只重置样式设置）。
+
+数据模型设计（用TypeScript接口定义）：
+
+typescript
+// 简历主数据结构
+interface Resume {
+  id: string;
+  templateId: string;
+  globalSettings: GlobalSettings;
+  modules: Module[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface GlobalSettings {
+  primaryColor: string;
+  backgroundColor: string;
+  fontFamily: string;
+  fontSize: number;
+  margin: number;
+  sectionSpacing: number;
+  showPageNumbers: boolean;
+}
+
+type ModuleType = 
+  | 'personal-info'
+  | 'summary'
+  | 'experience'
+  | 'education'
+  | 'skills'
+  | 'projects'
+  | 'certifications'
+  | 'languages'
+  | 'custom';
+
+interface Module {
+  id: string;
+  type: ModuleType;
+  title: string; // 可自定义的模块标题，如“工作经历”
+  visible: boolean;
+  order: number;
+  data: Record<string, any>; // 模块具体内容，根据type结构不同
+}
+
+// 示例：personal-info模块的data
+interface PersonalInfoData {
+  fullName: string;
+  title: string;
+  email: string;
+  phone: string;
+  location: string;
+  website: string;
+  linkedin: string;
+  github: string;
+  avatar: string; // base64
+}
+
+// 列表型模块通用条目结构
+interface ListEntry {
+  id: string;
+  title: string;
+  subtitle: string;
+  startDate: string;
+  endDate: string;
+  current: boolean;
+  location: string;
+  description: string; // 支持换行和简单标记
+}
+// experience模块的data包含entries: ListEntry[]
+模板数据结构示例：
+
+typescript
+interface Template {
+  id: string;
+  name: string;
+  layout: 'single' | 'two-column' | 'sidebar-left' | 'sidebar-right';
+  defaultGlobalSettings: GlobalSettings;
+  defaultModules: Module[]; // 预置模块顺序和可见性
+  thumbnail: string; // 缩略图URL或组件名
+}
+组件树设计（主要组件）：
+
+App
+
+HomePage (模板选择、简历列表)
+
+EditorPage
+
+EditorLayout
+
+LeftPanel: ModuleList (可拖拽排序的模块列表) + AddModuleButton
+
+CenterPanel: ResumePreview (分页显示、缩放控制)
+
+RightPanel: ModuleEditor (根据选中模块类型动态渲染表单)
+
+TopBar: 保存状态、导出PDF按钮、返回首页、撤销/重做
+
+ColorPicker, FontSelector, etc.
+
+状态管理（Context + Reducer）：
+
+resume: Resume 对象（当前编辑的简历）
+
+selectedModuleId: string | null
+
+history: { past: Resume[], future: Resume[] } 用于撤销重做
+
+scale: number (预览缩放比例)
+
+所有修改操作通过dispatch触发，reducer更新resume并自动推入历史栈。
+
+实现步骤（逐步进行，方便AI分阶段生成代码）：
+
+项目初始化：使用Vite创建React+TypeScript项目，安装所需依赖，配置Tailwind，设置基本路由。
+
+定义所有TypeScript类型和接口，创建模拟的模板数据和初始简历数据。
+
+实现全局状态管理（ResumeContext）和reducer，编写修改简历、选中模块、撤销重做等action。
+
+开发简历预览组件 ResumePreview：
+
+根据当前模板布局和globalSettings渲染A4尺寸容器。
+
+实现各个模块的渲染组件（PersonalInfoSection, ExperienceSection等），按照order顺序排列。
+
+支持多页：测量内容高度，超过一页时动态拆分（计算每个模块的高度，适当分页）。
+
+将预览组件设计为可被导出时的快照捕获。
+
+开发模块编辑器组件（右侧面板）：
+
+根据selectedModuleId找到对应的module，根据其type渲染不同的编辑表单。
+
+表单变化直接dispatch更新对应模块的data，实现实时预览。
+
+列表型模块（experience等）支持添加/删除/排序条目，条目内编辑。
+
+实现左面板：模块列表显示当前简历的所有模块，支持拖拽排序（@dnd-kit），点击选中模块，切换可见性，添加新模块（弹出模块类型选择）。
+
+全局设置功能：在顶部或右侧独立设置页面，修改颜色、字体、边距等，影响整个预览和导出。
+
+集成模板系统：首页展示模板卡片，点击后创建新简历并应用模板默认数据，跳转编辑器。编辑器内也可切换模板（保留内容，仅改变布局和样式，需要根据新布局调整模块顺序等）。
+
+实现本地存储逻辑：加载、保存、删除、复制简历，在首页列出。
+
+PDF导出：实现导出按钮，触发html2canvas逐页截图，拼接成PDF。处理分页精确性，确保每页内容不截断。
+
+响应式适配：使用Tailwind的响应式类调整三栏布局在不同尺寸下的显示。
+
+细节优化：加载字体（动态注入Google Fonts link），添加过渡动画，优化表单性能（防抖），错误边界处理。
+
+给AI的特别提示：
+
+所有代码生成请使用函数组件和React Hooks。
+
+样式优先使用Tailwind类，特殊情况可用内联样式或CSS模块。
+
+需要完整、可运行的文件结构，不要省略任何导入或配置。
+
+在开发过程中先实现核心流程（选择模板→编辑→实时预览→导出），再逐步丰富模板和高级功能。
+
+确保导出的PDF包含中文字体支持，可在html2canvas配置中设置allowTaint和foreignObjectRendering，或通过截图方式保证字体渲染正确。
+
+使用react-router-dom v6进行路由管理。
+
+数据持久化时注意localStorage容量限制，头像base64不宜过大，可限制图片尺寸。
+
+所有硬编码的模板数据放置于单独文件templates.ts中，方便扩展。
+
+简历分页算法：通过测量预览容器内每个模块的实际高度（getBoundingClientRect），按A4内容区域高度（约1123px - 上下边距）累加，超出则新建一页。在预览中通过绝对定位的分页线表示。
+
+最终项目结构应清晰，包含pages、components、context、types、utils、templates等文件夹。
+
+本开发文档已提供完整的架构设计和实现指引，请AI严格按照此规范逐步构建整个应用，确保功能完备、交互流畅、视觉精美。
+
