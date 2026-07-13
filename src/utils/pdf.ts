@@ -4,50 +4,57 @@ import jsPDF from 'jspdf';
 const A4_WIDTH_MM = 210;
 const A4_HEIGHT_MM = 297;
 const A4_HEIGHT_PX = 1123;
+const SCALE = 2;
 
 export async function exportToPDF(
   previewElement: HTMLElement,
   fileName: string = '简历.pdf'
 ): Promise<void> {
-  // 找唯一的 A4 长容器
   const paper = previewElement.querySelector('.a4-paper') as HTMLElement;
   if (!paper) {
     alert('没有找到简历内容');
     return;
   }
 
-  // 渲染整个长页面
+  // 一次性渲染整个长页面
   const fullCanvas = await html2canvas(paper, {
-    scale: 3,
+    scale: SCALE,
     useCORS: true,
     allowTaint: true,
     backgroundColor: '#ffffff',
     logging: false,
   });
 
-  const totalH = fullCanvas.height;
-  const pageCount = Math.ceil(totalH / (A4_HEIGHT_PX * 3)); // *3 because scale=3
+  const canvasW = fullCanvas.width;
+  const canvasH = fullCanvas.height;
+  const pageHpx = A4_HEIGHT_PX * SCALE; // 每页在 canvas 中的高度
+  const pageCount = Math.ceil(canvasH / pageHpx);
 
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+    compress: true,
+  });
 
   for (let i = 0; i < pageCount; i++) {
-    const sy = i * A4_HEIGHT_PX * 3; // source y in canvas pixels
-    const sh = Math.min(A4_HEIGHT_PX * 3, totalH - sy); // source height
+    const sy = i * pageHpx;
+    const sh = Math.min(pageHpx, canvasH - sy);
 
-    // 创建页面画布
+    // 从大 canvas 裁剪当前页
     const pageCanvas = document.createElement('canvas');
-    pageCanvas.width = fullCanvas.width;
+    pageCanvas.width = canvasW;
     pageCanvas.height = sh;
     const ctx = pageCanvas.getContext('2d')!;
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
-    ctx.drawImage(fullCanvas, 0, sy, fullCanvas.width, sh, 0, 0, fullCanvas.width, sh);
+    ctx.fillRect(0, 0, canvasW, sh);
+    ctx.drawImage(fullCanvas, 0, sy, canvasW, sh, 0, 0, canvasW, sh);
 
     if (i > 0) pdf.addPage();
 
-    const imgData = pageCanvas.toDataURL('image/png');
-    const imgHmm = (sh * A4_WIDTH_MM) / fullCanvas.width;
-    pdf.addImage(imgData, 'PNG', 0, 0, A4_WIDTH_MM, Math.min(imgHmm, A4_HEIGHT_MM));
+    const imgData = pageCanvas.toDataURL('image/jpeg', 0.92);
+    const imgHmm = (sh * A4_WIDTH_MM) / canvasW;
+    pdf.addImage(imgData, 'JPEG', 0, 0, A4_WIDTH_MM, Math.min(imgHmm, A4_HEIGHT_MM));
   }
 
   pdf.save(fileName);
