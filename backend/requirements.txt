@@ -1,21 +1,13 @@
-# DocMaster — Python 后端依赖清单
-# Railway/Ubuntu 部署环境
-
-# === Web 框架 ===
+# DocMaster — Python 后端依赖
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 pydantic>=2.7.0
 
-# === 文档处理核心库（纯 Python，无需外部软件）===
-pdf2docx>=0.5.8            # PDF → Word（排版还原度最高）
-python-pptx>=0.6.23        # PPT 创建与读取
-python-docx>=1.1.0         # Word 文档创建与读取
-pypdf>=4.2.0               # PDF 合并/拆分
-Pillow>=10.3.0             # 图片处理
-PyMuPDF>=1.26.0            # PDF 高清渲染（PDF→PPT 需要）
-
-# === 以下转换需要 LibreOffice（Railway 上需在 nixpacks.toml 中安装）===
-# - Word → PDF
-# - PPT → PDF
-# Railway 默认不含 LibreOffice，会自动降级为纯文本提取
+# 文档转换库
+pdf2docx>=0.5.8
+python-pptx>=0.6.23
+python-docx>=1.1.0
+pypdf>=4.2.0
+Pillow>=10.3.0
+PyMuPDF>=1.26.0
