@@ -48,6 +48,8 @@ def convert_with_libreoffice(
     cmd = [
         soffice,
         '--headless',
+        '--norestore',       # 跳过文档恢复（省内存）
+        '--safe-mode',       # 安全模式（禁用扩展，省内存）
         '-env:UserInstallation=' + user_install,
         '--convert-to', target_format,
         '--outdir', output_dir,
@@ -71,7 +73,18 @@ def convert_with_libreoffice(
             print(f'[LibreOffice] 转换失败 (exit={result.returncode})')
             print(f'[LibreOffice] stderr: {stderr}')
             print(f'[LibreOffice] stdout: {stdout}')
-            # 把 LibreOffice 的原始错误抛出去
+
+            # exit 137 = SIGKILL，通常是内存不足（OOM）
+            if result.returncode == 137:
+                raise RuntimeError(
+                    f'LibreOffice 内存不足被系统终止 (exit=137)。'
+                    f'原因：Railway 免费容器内存 (~256MB) 不足以运行 LibreOffice 转换。\n'
+                    f'解决方案：\n'
+                    f'  1. 升级 Railway 套餐，获取更多内存\n'
+                    f'  2. 在 Railway Dashboard → Settings 中增加 Memory 配额\n'
+                    f'  3. 使用更小的文件或降低 LibreOffice 的并行转换数'
+                )
+
             raise RuntimeError(
                 f'LibreOffice 转换失败 (exit={result.returncode}): {stderr or "请检查文件格式"}'
             )
