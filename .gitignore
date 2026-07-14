@@ -1,0 +1,44 @@
+# 依赖目录
+node_modules/
+venv/
+__pycache__/
+
+# 构建产物
+frontend/dist/
+*.pyc
+*.pyo
+
+# 环境配置
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 上传和输出临时文件
+backend/uploads/*
+backend/outputs/*
+!backend/uploads/.gitkeep
+!backend/outputs/.gitkeep
+
+# 日志
+*.log
+npm-debug.log*
+
+# Python
+*.egg-info/
+dist/
+build/
+*.spec
+
+# TypeScript
+frontend/tsconfig.tsBuildInfo

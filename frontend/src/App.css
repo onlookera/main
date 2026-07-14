@@ -1,0 +1,106 @@
+/**
+ * DocMaster — App 级别样式
+ * Ant Design 增强：动效、微交互、品牌调性
+ */
+
+/* === 卡片悬浮 3D 抬升 === */
+.ant-card {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.3s ease;
+}
+.ant-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-xl);
+}
+
+/* === 主按钮 — 渐变 + 光晕 + 按压回弹 === */
+.ant-btn-primary {
+  background: linear-gradient(135deg, #4F46E5, #6366F1) !important;
+  border: none !important;
+  box-shadow: 0 2px 12px rgba(79, 70, 229, 0.35);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+  font-weight: 600;
+}
+.ant-btn-primary:hover {
+  background: linear-gradient(135deg, #6366F1, #818CF8) !important;
+  box-shadow: 0 6px 20px rgba(79, 70, 229, 0.45) !important;
+  transform: translateY(-2px);
+}
+.ant-btn-primary:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: 0 1px 4px rgba(79, 70, 229, 0.3) !important;
+}
+
+/* === 默认按钮 — 悬浮变色 === */
+.ant-btn-default:hover {
+  border-color: var(--color-indigo-400) !important;
+  color: var(--color-indigo-600) !important;
+}
+
+/* === 按钮加载态光晕 === */
+.ant-btn-loading {
+  opacity: 0.85;
+}
+
+/* === 上传拖拽区增强 === */
+.ant-upload-drag {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+.ant-upload-drag:hover {
+  border-color: var(--color-indigo-400) !important;
+  background-color: var(--color-indigo-50) !important;
+  box-shadow: 0 0 24px rgba(79, 70, 229, 0.08);
+}
+
+/* === Select 下拉增强 === */
+.ant-select-dropdown {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-xl) !important;
+  padding: 6px !important;
+  animation: fadeInUp 0.2s ease-out !important;
+}
+.ant-select-item-option {
+  border-radius: 6px !important;
+  transition: background 0.2s ease !important;
+}
+.ant-select-item-option:hover {
+  background: var(--color-indigo-50) !important;
+}
+
+/* === Message 提示增强 === */
+.ant-message-notice-content {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+
+/* === Drawer 抽屉增强 === */
+.ant-drawer-content {
+  border-radius: 16px 0 0 16px !important;
+}
+.ant-drawer-header {
+  border-bottom: 1px solid var(--color-slate-100) !important;
+}
+
+/* === 进度条增强 === */
+.ant-progress-bg {
+  transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+}
+
+/* === Tag 标签增强 === */
+.ant-tag {
+  border-radius: 6px !important;
+  font-weight: 500;
+}
+
+/* === 底部版权 === */
+.ant-layout-footer {
+  background: transparent !important;
+  border-top: 1px solid var(--color-slate-100);
+  margin-top: 32px;
+}
+
+/* === 页面入场交错动画 === */
+.fade-in-up:nth-child(1) { animation-delay: 0s; }
+.fade-in-up:nth-child(2) { animation-delay: 0.1s; }
+.fade-in-up:nth-child(3) { animation-delay: 0.2s; }
+.fade-in-up:nth-child(4) { animation-delay: 0.3s; }
