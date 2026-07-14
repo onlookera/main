@@ -11,9 +11,13 @@ import type {
 } from '../types';
 
 // 创建 Axios 实例，配置基础 URL 和超时时间
+// 生产环境：从 import.meta.env.VITE_API_BASE 读取（Cloudflare Pages 环境变量）
+// 回退到 /api（同源代理）
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+
 const apiClient = axios.create({
-  baseURL: '/api',  // 开发用 Vite proxy，生产同源
-  timeout: 600000, // 大文件转换可能需要较长时间，设为 10 分钟
+  baseURL: API_BASE,
+  timeout: 600000, // 10 分钟
 });
 
 // ==================== 文件上传 ====================
@@ -89,10 +93,11 @@ export async function downloadFile(taskId: string): Promise<Blob> {
 }
 
 /**
- * 获取文件下载链接（用于 <a> 标签直接下载）
+ * 获取文件下载链接
  */
 export function getDownloadUrl(taskId: string): string {
-  return `/api/download/${taskId}`;
+  const base = import.meta.env.VITE_API_BASE || '/api';
+  return `${base}/download/${taskId}`;
 }
 
 // ==================== 清理文件 ====================
