@@ -16,9 +16,11 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from .utils.file_utils import UPLOAD_DIR, OUTPUT_DIR, cleanup_old_files
+    from .utils.libreoffice import is_libreoffice_available
     UPLOAD_DIR.mkdir(exist_ok=True)
     OUTPUT_DIR.mkdir(exist_ok=True)
     cleanup_old_files(max_age_hours=24)
+    print(f'[DocMaster] LibreOffice available: {is_libreoffice_available()}')
     print(f'[DocMaster] http://127.0.0.1:8000')
     yield
     print('[DocMaster] stopped')
@@ -33,6 +35,33 @@ app.include_router(api_router)
 @app.get('/health')
 async def health():
     return {'status': 'healthy'}
+
+
+@app.get('/system-check')
+async def system_check():
+    """诊断系统环境 — 用于排查部署问题"""
+    import shutil, sys, os
+    from .utils.libreoffice import is_libreoffice_available
+
+    def check(cmd):
+        path = shutil.which(cmd)
+        return str(path) if path else 'NOT FOUND'
+
+    return {
+        'python': sys.executable,
+        'python_version': sys.version,
+        'os_name': os.name,
+        'platform': sys.platform,
+        'libreoffice_available': is_libreoffice_available(),
+        'which_soffice': check('soffice'),
+        'which_libreoffice': check('libreoffice'),
+        'path_env': os.environ.get('PATH', ''),
+        'linux_paths_checked': {
+            '/usr/bin/libreoffice': os.path.exists('/usr/bin/libreoffice'),
+            '/usr/bin/soffice': os.path.exists('/usr/bin/soffice'),
+            '/usr/lib/libreoffice/program/soffice': os.path.exists('/usr/lib/libreoffice/program/soffice'),
+        },
+    }
 
 
 # ===== 前端静态文件 =====
