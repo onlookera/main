@@ -13,7 +13,7 @@ def convert_with_libreoffice(
     input_path: str,
     output_path: str,
     target_format: str = 'pdf',
-    timeout: int = 120,
+    timeout: int = 300,
 ) -> bool:
     """
     使用 LibreOffice 命令行进行文档格式转换
@@ -22,14 +22,17 @@ def convert_with_libreoffice(
         input_path: 输入文件路径
         output_path: 期望的输出文件路径
         target_format: 目标格式（如 pdf, docx, pptx）
-        timeout: 超时秒数（默认120秒）
+        timeout: 超时秒数（默认300秒）
 
     返回:
         True = 转换成功，False = LibreOffice 不可用或转换失败
     """
     soffice = _find_libreoffice()
     if not soffice:
+        print('[LibreOffice] 未找到 soffice/libreoffice 可执行文件')
         return False
+
+    print(f'[LibreOffice] 找到: {soffice}')
 
     output_dir = os.path.dirname(output_path)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -38,7 +41,7 @@ def convert_with_libreoffice(
         result = subprocess.run(
             [
                 soffice,
-                '--headless',          # 无 GUI 模式
+                '--headless',
                 '--convert-to', target_format,
                 '--outdir', output_dir,
                 input_path,
@@ -49,9 +52,9 @@ def convert_with_libreoffice(
         )
 
         if result.returncode != 0:
+            print(f'[LibreOffice] 转换失败 (exit={result.returncode}): {result.stderr[:200]}')
             return False
 
-        # LibreOffice 输出文件与输入同名但扩展名不同，需要重命名
         input_stem = os.path.splitext(os.path.basename(input_path))[0]
         generated = os.path.join(output_dir, f'{input_stem}.{target_format}')
 
@@ -60,9 +63,18 @@ def convert_with_libreoffice(
                 os.remove(output_path)
             os.rename(generated, output_path)
 
-        return os.path.exists(output_path)
+        success = os.path.exists(output_path)
+        print(f'[LibreOffice] 转换完成: {output_path} ({success})')
+        return success
 
-    except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError):
+    except subprocess.TimeoutExpired:
+        print(f'[LibreOffice] 转换超时 ({timeout}s)')
+        return False
+    except FileNotFoundError as e:
+        print(f'[LibreOffice] 文件未找到: {e}')
+        return False
+    except PermissionError as e:
+        print(f'[LibreOffice] 权限错误: {e}')
         return False
 
 
@@ -73,25 +85,35 @@ def is_libreoffice_available() -> bool:
 
 def _find_libreoffice() -> str | None:
     """
-    查找 LibreOffice 可执行文件路径
-    跨平台搜索：Windows → macOS → Linux PATH
+    跨平台查找 LibreOffice 可执行文件路径
     """
-    # Windows 典型安装路径
+    # Windows 典型路径
     if os.name == 'nt':
-        possible_paths = [
+        for p in [
             r'C:\Program Files\LibreOffice\program\soffice.exe',
             r'C:\Program Files (x86)\LibreOffice\program\soffice.exe',
-        ]
-        for p in possible_paths:
+        ]:
             if os.path.exists(p):
                 return p
 
-    # macOS 典型路径
-    mac_path = '/Applications/LibreOffice.app/Contents/MacOS/soffice'
-    if os.path.exists(mac_path):
-        return mac_path
+    # macOS 路径
+    mac = '/Applications/LibreOffice.app/Contents/MacOS/soffice'
+    if os.path.exists(mac):
+        return mac
 
-    # 尝试 PATH 环境变量
+    # Linux 常见安装路径
+    linux_paths = [
+        '/usr/bin/libreoffice',
+        '/usr/bin/soffice',
+        '/usr/lib/libreoffice/program/soffice',
+        '/usr/local/bin/libreoffice',
+        '/snap/bin/libreoffice',
+    ]
+    for p in linux_paths:
+        if os.path.exists(p):
+            return p
+
+    # PATH 环境变量兜底
     for name in ['soffice', 'libreoffice']:
         found = shutil.which(name)
         if found:
