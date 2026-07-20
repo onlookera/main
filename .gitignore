@@ -42,3 +42,5 @@ build/
 
 # TypeScript
 frontend/tsconfig.tsBuildInfo
+chroma_data/
+.env

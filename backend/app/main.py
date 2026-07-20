@@ -1,17 +1,21 @@
 """
-DocMaster — FastAPI 主入口
+DocMaster + 智能 RAG 知识库 — FastAPI 主入口
 """
 
+import asyncio
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from .api.endpoints import router as api_router
+from .routers.upload import router as rag_upload_router
+from .routers.query import router as rag_query_router
+from .routers.management import router as rag_management_router
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / 'frontend' / 'dist'
 
-from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,16 +24,40 @@ async def lifespan(app: FastAPI):
     UPLOAD_DIR.mkdir(exist_ok=True)
     OUTPUT_DIR.mkdir(exist_ok=True)
     cleanup_old_files(max_age_hours=24)
+
+    # 启动 RAG 文件清理后台任务
+    from .utils.file_cleanup import cleanup_loop
+    cleanup_task = asyncio.create_task(cleanup_loop())
+
     print(f'[DocMaster] LibreOffice available: {is_libreoffice_available()}')
-    print(f'[DocMaster] http://127.0.0.1:8000')
+    print(f'[DocMaster] RAG 知识库已就绪')
     yield
+
+    # 关闭后台任务
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
     print('[DocMaster] stopped')
 
-app = FastAPI(title='DocMaster API', version='1.0.0', docs_url='/docs', redoc_url='/redoc', lifespan=lifespan)
+
+app = FastAPI(
+    title='DocMaster + RAG Knowledge Base API',
+    version='1.0.0',
+    docs_url='/docs',
+    redoc_url='/redoc',
+    lifespan=lifespan,
+)
 app.add_middleware(CORSMiddleware, allow_origins=['*'], allow_credentials=True, allow_methods=['*'], allow_headers=['*'])
 
-# ===== API 路由（最高优先级）=====
+# ===== DocMaster 格式转换 API（/api/...）=====
 app.include_router(api_router)
+
+# ===== 智能 RAG 知识库 API（/api/v1/...）=====
+app.include_router(rag_upload_router, prefix="/api/v1")
+app.include_router(rag_query_router, prefix="/api/v1")
+app.include_router(rag_management_router, prefix="/api/v1")
 
 
 @app.get('/health')
@@ -39,7 +67,7 @@ async def health():
 
 @app.get('/system-check')
 async def system_check():
-    """诊断系统环境 — 用于排查部署问题"""
+    """诊断系统环境"""
     import shutil, sys, os
     from .utils.libreoffice import is_libreoffice_available
 
@@ -56,11 +84,6 @@ async def system_check():
         'which_soffice': check('soffice'),
         'which_libreoffice': check('libreoffice'),
         'path_env': os.environ.get('PATH', ''),
-        'linux_paths_checked': {
-            '/usr/bin/libreoffice': os.path.exists('/usr/bin/libreoffice'),
-            '/usr/bin/soffice': os.path.exists('/usr/bin/soffice'),
-            '/usr/lib/libreoffice/program/soffice': os.path.exists('/usr/lib/libreoffice/program/soffice'),
-        },
     }
 
 

@@ -1,0 +1,194 @@
+模块一：项目架构与技术选型（为什么是 FastAPI + React？为什么不用 Celery？）
+面试官会问（由浅入深）：
+
+“文档转换是计算密集型任务，为什么后端选 Python FastAPI 而不是 Spring Boot 或 Go？FastAPI 的异步特性在这个项目中如何发挥作用？”
+
+“你提到了 BackgroundTasks 处理转换任务，为什么不直接用 Celery + Redis 做分布式任务队列？单机线程池在文件量暴增时有什么瓶颈？”
+
+“前端为什么选 React + Ant Design 5，而不是 Vue + Element Plus？有没有考虑过 Next.js 做 SSR 来优化 SEO？”
+
+刁钻问题：“你的架构是前后端分离，但文档转换耗时较长（比如 5 分钟）。如果前端请求在等待时断网了，后端还在跑吗？转换完成后怎么通知前端？”
+
+极度刁钻：“如果后端 FastAPI 服务挂了，前端怎么优雅降级？你在前端有没有做服务健康检查（Health Check） 和重试机制？”
+
+你必须要懂的底层知识（务必背下来）：
+
+FastAPI 选型：FastAPI 基于 Starlette，原生支持 async/await，非阻塞 I/O 非常适合文件读写和 API 响应。它比 Django（同步）更适合高并发文件上传和状态轮询。同时，它自动生成 Swagger 文档，对开源项目极友好。
+
+BackgroundTasks vs Celery：FastAPI.BackgroundTasks 是轻量级线程池（基于 asyncio 或 ThreadPool），适合快速启动、中小规模任务；Celery 是分布式消息队列，适合任务量大、需持久化、多机扩展。你的项目现在用 BackgroundTasks，面试官问“如果用户量大了怎么办”，你要答：“我做了线程池隔离和任务队列长度监控，如果并发数超过阈值，会返回 503 排队提示，未来可平滑迁移到 Celery + Redis 进行横向扩展。”
+
+断网处理：如果前端断网，后端任务仍在跑。你的方案是用 localStorage 存储任务 ID，并在前端恢复网络时主动轮询 /status/{task_id} 接口，重新拉取结果。这是非常关键的业务逻辑。
+
+健康检查：前端应在 useEffect 中定时（如每分钟）访问 /health 接口，若失败，则显示“服务维护中”并禁用上传。
+
+关键工程陷阱：
+AI 可能直接写一个 POST /convert 接口，完全不处理大文件上传超时，导致前端 fetch 超时断开。你要主动说：“前端使用 axios 设置了 timeout: 0（无超时），并在底层用 XMLHttpRequest 支持 onUploadProgress 监控上传进度，同时后端配置了 uvicorn 的 --timeout-keep-alive 参数。”
+
+模块二：高还原度文档转换引擎（pdf2docx、PyMuPDF、LibreOffice、python-pptx）
+面试官会问（核心算法与技术深度）：
+
+“pdf2docx 是怎么实现 PDF→Word 排版级转换的？它如何识别 PDF 中的段落、表格和图片？如果 PDF 是扫描件（纯图片），pdf2docx 还能转换吗？”
+
+“PyMuPDF (fitz) 渲染 PDF→PPT，你说用 300DPI 高清渲染。如果原 PDF 有 100 页，生成 PPT 时是一页一张图，还是保留了原 PDF 的文字可编辑性？”
+
+“LibreOffice 命令行桥接 实现 Word/PPT→PDF，具体用的是什么命令？soffice 的 --headless、--convert-to 参数你熟悉吗？LibreOffice 和 Microsoft Office 在转换排版上的差异怎么处理？”
+
+刁钻问题：“python-pptx 和 python-docx 作为 PPT→Word 文本提取回退方案，它们能提取文字，但能提取图片和表格吗？如果不能，你怎么保证回退后的文档质量？”
+
+极度刁钻：“6种转换路径 具体是哪些？如果用户上传了一个带密码的 PDF，你会在哪个环节抛出异常？如果是损坏的 PDF，PyMuPDF 会抛出什么异常？你怎么捕获？”
+
+极度刁钻（2）：“pdf2docx 在转换复杂的数学公式或特殊符号时，会出现乱码。你有解决方案吗？如果用户传的是中文 PDF，pdf2docx 默认字体不匹配怎么办？”
+
+你必须要懂的底层知识：
+
+pdf2docx 原理：它遍历 PDF 页面元素，识别文本块（按坐标和字体）、图像区域，然后解析表格结构（通过线框识别），最后用 python-docx 写入 Word。扫描件（图片 PDF）完全不可用，因为 pdf2docx 依赖文本层，这时候你用 PyMuPDF 提取文字也无效，只能报错“PDF 为纯图片，请使用 OCR 服务”。
+
+PyMuPDF 渲染 PPT：fitz 可以直接把 PDF 页面渲染成 pixmap（PNG 图片），然后用 python-pptx 一页一页插入图片。缺点是 PPT 变成“图集”，无法编辑文字，但保真度最高。
+
+LibreOffice 命令：soffice --headless --convert-to pdf --outdir /output /input.docx。你要知道 --headless 表示无 GUI 模式，--convert-to 指定输出格式。
+
+回退方案质量：python-pptx 提取 PPT 文本，仅保留纯文本字符串，丢失所有布局、图片、表格，所以你把这个叫“回退方案”，不是“完美替代方案”。
+
+加密与损坏处理：PyMuPDF 读取加密 PDF 时会抛出 fitz.fitz.EmptyFileError 或 fitz.fitz.ToolsError。你必须在 try-except 中捕获，并返回“文件加密，请解锁后上传”。
+
+关键工程陷阱：
+AI 通常只会pip install pdf2docx，但完全忽略中文环境。你要说：“我在转换前注入中文字体（wqy-zenhei），并在 pdf2docx 中指定 fonts 参数，确保中文不变成方块。”
+
+模块三：高性能异步任务架构与大文件处理（流式 I/O、TaskManager、异常边界）
+面试官会问（性能与架构）：
+
+“你说 ‘支持 2GB+ 大文件流式写入磁盘而非全量读入内存’，具体怎么实现的？FastAPI 的 UploadFile 默认是存内存还是存磁盘？你怎么保证 2GB 文件不把服务器内存撑爆？”
+
+“TaskManager 内存字典 为什么是线程安全的？你用 threading.Lock 还是 asyncio.Lock？如果 10 个任务同时更新状态，怎么防止数据竞态？”
+
+“1 秒级轮询精度，前端轮询 /status 接口如果频率太高（比如 100 个用户同时轮询），后端扛得住吗？你怎么设计 轮询频率自适应？”
+
+刁钻问题：“如果转换过程中 LibreOffice 进程崩溃（比如 OOM），你的 TaskManager 怎么感知？有没有设置 子进程超时 和 僵尸进程清理？”
+
+极度刁钻：“你说异常覆盖了 10 余种边缘场景。能具体说两个最难处理的吗？比如 ‘文件格式伪装’（把 .exe 重命名为 .pdf 上传）你怎么检测？‘路径注入攻击’（文件名包含 ../）你怎么防御？”
+
+你必须要懂的底层知识：
+
+流式写入：FastAPI 的 UploadFile 默认若未指定 spool_max_size，会在内存中存储，超限后写入磁盘。但你要手动读取 file 对象的分块（chunks），用 open(dest, 'wb') 逐块写入磁盘，并在 finally 中清理。关键代码是 shutil.copyfileobj(file.file, output_file)。
+
+线程安全 TaskManager：使用 asyncio.Lock（因为 FastAPI 是异步的）或 threading.Lock 保护对 tasks 字典的增删改。更优方案是用 dict 配合 asyncio.Lock 的 async with 上下文。
+
+轮询频率自适应：你可以采用 指数退避（Exponential Backoff） 策略：前 3 次轮询间隔 1s，然后 2s、4s、8s，直到转换完成。这样可以大幅降低后端压力。
+
+子进程监控：使用 subprocess.Popen 启动 LibreOffice 时，设置 timeout 参数，若超时则 process.kill()。同时，在 TaskManager 中记录 pid，用 psutil 库检查进程是否活着，若死了，标记任务为“失败”。
+
+关键工程陷阱：
+AI 只会用 UploadFile 直接读取，完全没考虑文件清理。如果转换失败，临时文件会堆积导致磁盘填满。你要说：“我在 TaskManager 的 cleanup 方法中，对所有临时文件执行 os.remove，并设置 定时任务 清理超过 1 小时的垃圾文件。”
+
+模块四：云原生部署与容器化适配（Railway、Nixpacks、OOM 攻坚战）
+面试官会问（云原生与运维）：
+
+“Railway 的部署机制是什么？Nixpacks 和传统的 Dockerfile 有什么区别？你为什么选 Nixpacks 而不是自己写 Dockerfile？”
+
+“LibreOffice OOM 崩溃（exit=137），在 256MB 内存限制的容器里为什么会发生？exit=137 代表什么含义？你怎么用 --norestore --safe-mode 解决的？”
+
+“中文字体包（wqy-zenhei）注入，怎么在 Railway 的无根容器环境下安装？是 apt-get install 还是二进制的包？”
+
+刁钻问题：“Railway 免费版有 限流和睡眠（Sleep） 策略（如果 15 分钟无请求，服务进入睡眠状态）。你的前端轮询会不会因为服务睡眠而失败？你怎么解决？”
+
+极度刁钻：“如果未来你要迁移到 Kubernetes（K8s） 或 AWS ECS，你的 TaskManager 内存字典（单机内存状态）会面临什么问题？怎么改造为分布式状态？”
+
+你必须要懂的底层知识：
+
+Nixpacks 原理：Railway 默认使用 Nixpacks 自动检测 Python/Node 环境并构建。它不需要 Dockerfile，能极大降低配置复杂度。
+
+OOM 与 exit=137：exit=137 表示容器内存不足（OOM Killer 杀死了进程）。LibreOffice 启动时占用内存较高。解决方法：
+
+--norestore：禁用 LibreOffice 的恢复机制，减少内存占用。
+
+--safe-mode：以安全模式启动，不加载扩展。
+
+更重要的是，限制并发数：TaskManager 同一时间只允许 2 个转换任务并行，防止多任务竞争 256MB 内存。
+
+中文字体注入：在 nixpacks.toml 或构建脚本中执行 apt-get update && apt-get install -y fonts-wqy-zenhei，并设置 export PYTHONPATH 指向字体路径。
+
+Railway 睡眠处理：如果服务睡眠，轮询会超时。解决方案是通过 GitHub Actions 定时触发 /health 接口（每 5 分钟） 保持服务活跃，或者使用 Railway 的 “Always On” 功能（收费）。你可以解释：“我通过监控，建议用户在生产环境购买 Railway 的 Always On 计划，或迁移到更稳定的云服务。”
+
+关键工程陷阱：
+AI 不会考虑容器内的 subprocess 路径问题。你要说：“Railway 容器中 /tmp 是可写的，但 /usr/lib/libreoffice 是只读的。我通过 os.environ 设置 TMPDIR 变量，确保 LibreOffice 的临时文件生成在 /tmp 目录中。”
+
+模块五：前端交互与工程化（Design Tokens、拖拽上传粒子特效、进度轮询）
+面试官会问：
+
+“CSS 自定义属性设计令牌系统（Design Tokens），具体是怎么组织的？如果你要一键切换“深色模式”，你只需要改哪个变量？”
+
+“拖拽上传的霓虹边框呼吸动画和悬浮粒子动效，是用纯 CSS 实现的，还是 Canvas？用 Canvas 的话，性能开销大吗？”
+
+“实时百分比进度轮询，你是怎么实现不重绘整个列表的？用 React.memo 还是 useMemo 对进度组件做了缓存？”
+
+刁钻问题：“历史记录持久化，是存在 localStorage 吗？如果用户上传了 10 个 1GB 的大文件，前端怎么管理这些文件的下载 URL（是 blob: URL 还是服务器地址）？”
+
+极度刁钻：“Ant Design 的 Upload 组件，如果用户拖拽上传后，你又用 Fetch 二次发送，会不会导致 FormData 内存复制（性能损耗）？你怎么优化？”
+
+你必须要懂的底层知识：
+
+Design Tokens：在 :root 或 theme.css 中定义如 --color-primary、--radius-md、--spacing-lg，所有组件引用这些变量。深色模式只需切换 [data-theme="dark"] 对应的变量值。
+
+粒子/霓虹特效：纯 CSS 画布性能好，但霓虹边框通常用 box-shadow + @keyframes 实现。粒子动效若需大量粒子，应用 Canvas 或 CSS grid 原生，否则用 requestAnimationFrame 控制帧率。
+
+进度轮询优化：使用 useReducer 和 useCallback，将进度条组件用 React.memo(isEqual) 包裹，避免父组件重绘导致进度条闪烁。
+
+历史记录管理：只存储任务 id、文件名、状态、转换类型，不存储文件本身。下载 URL 指向后端的 /download/{task_id}，需要后端生成临时签名 URL。
+
+Ant Design Upload：Upload 默认会先上传到前端内存。你可以用 beforeUpload 拦截，直接构造 FormData 发送，避免二次内存复制。
+
+关键工程陷阱：
+AI 可能直接用 Antd 的 Upload 和 Progress，但完全没做“浏览器内存监控”。你要说：“我设定若上传文件超过 200MB，前端提示‘大文件上传，建议使用桌面客户端’；并通过 onDownload 接口使用 fetch 的 response.blob() 流式下载，防止浏览器内存被撑爆。”
+
+模块六：开源治理与 API 规范（Swagger、Git Workflow、双语文档）
+面试官会问：
+
+“Swagger/ReDoc 自动生成 API 文档，你怎么保证 POST /convert 的输入参数（File、Format）和输出（Status、DownloadUrl）描述清晰？”
+
+“Git Workflow 你是怎么管理的？有 main、dev、feature 分支吗？如果 GitHub 上有人提 Issue，你怎么处理？”
+
+“中英文双语 README，如果贡献者想修改文档，你要求他们同时更新双语版吗？还是只维护一份？”
+
+刁钻问题：“如果开源社区有人 Fork 你的项目，但后端部署依赖 Railway 的特定环境变量。你如何确保其他人用 Docker Compose 也能一键跑起来？”
+
+极度刁钻：“如果你要发布 v1.0.0 版本，你会怎么 打 Tag 和 发布 Release？是手动打包还是用 GitHub Actions 自动发布？”
+
+你必须要懂的底层知识：
+
+API 规范：你必须定义清晰的请求体（如 {"file": "file", "format": "docx"}）和响应体（{"task_id": "xxx", "status": "processing", "download_url": "..."}），且在 Swagger 的 response_model 中写明状态码（200, 400, 500, 503）。
+
+Git Workflow：main 分支为生产环境，dev 为开发环境，feature 为新功能。提交 PR 时需要 CI 检查，只有合并到 dev 才自动部署测试环境。
+
+环境配置：提供 .env.example 文件，并在 README 中写明 cp .env.example .env 步骤。需要提供 Dockerfile 和 docker-compose.yml，确保 Rail 用户本地可跑。
+
+Release 发布：在 package.json 和 pyproject.toml 中更新版本号，用 git tag v1.0.0 标记，并创建 Release，附上 CHANGELOG.md 变更日志。
+
+关键工程陷阱：
+AI 可能直接初始化一个 GitHub 仓库，完全没配置 .gitignore，导致 node_modules 和 python venv 上传。你要说：“我严格配置了 .gitignore，并在 .github/ 目录放置 dependabot 配置，自动更新依赖版本。”
+
+终极实战策略：如何应对“全栈 + 云原生 + 开源”的提问
+面试官如果问：“这个项目从开源到部署，你觉得最难的部分是什么？”
+
+你的标准回答模板（请背诵）：
+
+“这个项目最难的挑战是 ‘256MB 内存限制下 LibreOffice 的稳定运行’。
+
+在 Railway 免费容器上，LibreOffice 每次启动平均需要 150MB+ 内存，一旦超过 256MB，容器立即 exit=137（OOM 被 kill）。我做了三个层面的优化：
+
+参数级别：--norestore 禁用自动恢复、--safe-mode 禁用扩展，大幅减少启动内存；
+
+架构级别：TaskManager 强制并发数为 2，避免多任务抢占内存；
+
+工程级别：apt-get install fonts-wqy-zenhei 注入中文字体，防止中文转换崩溃。
+
+此外，我用 subprocess.Popen + 超时控制 捕获进程异常，并提供 python-pptx/docx 纯 Python 回退方案，确保即使 LibreOffice 失败，也能保住文本提取的底线。
+
+这个项目让我深刻理解了 文件 I/O、容器内存管理、异常边界设计 等全栈核心能力。”
+你的行动清单（面试前务必完成）：
+打开后端的 main.py，找到 BackgroundTasks 和 TaskManager 的实现，看看 tasks 字典里存了什么（状态、进度、输出路径）。
+
+在 subprocess 调用 soffice 的代码处，确认你传入了哪些参数（--headless、--convert-to、--outdir）。
+
+打开项目的 nixpacks.toml 或 Dockerfile，确认 apt-get install 语句中包含 fonts-wqy-zenhei。
+
+手画一张系统架构图：前端 Cloudflare → API 请求 → Railway 后端 FastAPI → TaskManager 线程池 → subprocess 调用 LibreOffice → 存储至磁盘 → 前端轮询状态

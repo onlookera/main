@@ -1,0 +1,146 @@
+智能 RAG 知识库项目——AI 开发与更新指南（纯文本）
+
+项目名称：智能 RAG 知识库（从 DocMaster 无缝迁移）
+定位：企业级问答助手，纯后端 API + 极简单页面前端
+核心能力：用户上传 PDF/Word → 自动解析、分块、向量化 → 存入 ChromaDB → 用户提问 → 基于文档内容生成答案
+技术栈：FastAPI + LangChain + ChromaDB + DeepSeek Embedding + DeepSeek Chat + React 前端
+
+重要约束（对 AI 的最高优先级指令）：
+
+所有更新必须保持向后兼容，严禁删除、重命名或修改任何已有的 API 端点、函数签名、核心逻辑。
+
+严禁更改 ChromaDB 的持久化目录结构或 collection 名称。
+
+严禁修改配置文件中的现有参数默认值，只能新增配置项。
+
+若需要新增依赖，必须在文档中说明并更新 requirements.txt，但不能移除已有依赖。
+
+所有新增代码必须遵守现有项目结构和命名规范。
+
+项目目录结构（请勿随意调整顶层目录）：
+project-root/
+app/
+main.py # FastAPI 入口，路由注册，中间件
+config.py # 所有配置项（API密钥、模型名、路径、分块参数等）
+auth.py # API Key 校验依赖
+routers/
+upload.py # 文档上传接口
+query.py # 问答接口
+management.py # 索引管理接口（列出、删除知识库文档）
+services/
+parser.py # PDF/Word 解析，返回纯文本
+chunker.py # 文本分块逻辑
+embedder.py # DeepSeek Embedding 封装
+vector_store.py # ChromaDB 操作（增、查、删）
+retriever.py # 混合检索（向量 + 关键词）
+generator.py # LLM 问答链与 Prompt 模板
+schemas/ # Pydantic 请求/响应模型
+utils/
+file_cleanup.py # 定时清理 /tmp 临时文件
+text_utils.py # 文本预处理工具
+frontend/ # React 前端源码（构建后静态文件由 FastAPI 挂载）
+chroma_data/ # ChromaDB 持久化目录（绝对不可动内部结构）
+tests/ # 单元测试与集成测试
+.env.example
+requirements.txt
+README.md
+
+现有功能详解（所有内容必须原样保留，只能在此基础上扩展）：
+
+文档上传与处理
+
+端点：POST /api/v1/documents/upload
+
+鉴权：请求头需携带 x-api-key，值必须与 config.py 中的 API_KEY 一致。
+
+流程：接收上传文件，仅允许 PDF 和 Word 格式，保存在 /tmp/doc_uploads/ 临时目录。调用 parser.py 提取文本。PDF 用 PyMuPDF，Word 用 python-docx。提取的文本通过 chunker.py 进行分块。
+
+分块策略（写死在 config.py 中，不可更改默认值）：
+使用 RecursiveCharacterTextSplitter
+参数：chunk_size = 512
+chunk_overlap = 128
+分隔符列表：["\n\n", "\n", "。", "！", "？", "；", " ", ""]
+设计理由：防止上下文在句子边界被截断，保留重叠可提升检索连续性。
+
+向量化：chunker 产生的每个文本块通过 embedder.py 调用 DeepSeek Embedding API 转为向量（维度 512），再存入 ChromaDB。
+
+存储：vector_store.py 使用 collection 名称为 "doc_master"，每条记录的元数据包含：源文件名、上传时间戳、分块序号。
+
+响应：返回 JSON {"document_id": "文件名的哈希或UUID", "chunks_count": 整数}。
+
+问答接口
+
+端点：POST /api/v1/query
+
+鉴权：同上。
+
+请求体：{"question": "用户问题字符串", "top_k": 5}
+
+检索逻辑（retriever.py，混合检索，权重固定）：
+第一步：向量检索——将问题通过同一 Embedding 模型向量化，在 ChromaDB 的 "doc_master" collection 中检索 top_k*2 个候选，得到余弦相似度分数。
+第二步：关键词检索——使用 BM25 算法（rank_bm25 库）对所有已索引的文本块建立检索，对问题进行分词后计算 BM25 分数。
+第三步：分数融合——向量分数和 BM25 分数都做 min-max 归一化到 [0,1] 区间，然后计算最终分数 = 0.7 * 归一化向量分数 + 0.3 * 归一化BM25分数。取最终得分最高的 top_k 个文本块。
+权重设计理由：0.7 权重偏向语义理解，0.3 保留关键词匹配能力，提升长尾词汇命中。
+
+生成逻辑（generator.py）：
+使用系统提示词（写死，不可修改）：
+"你是一个严谨的文档助手。请仅根据以下检索到的文档片段回答问题。如果检索内容中没有答案，请直接说‘文档中未提及’，不要编造任何信息。"
+将检索到的文档片段与用户问题一起填入模板，调用 DeepSeek Chat API 生成答案。
+
+响应：返回 {"answer": "生成的回答", "sources": [{"content": "片段文本", "source": "文件名", "score": 融合分数}, ...]}
+
+索引管理
+
+端点：GET /api/v1/documents （列出所有已索引文档及分块数）
+
+端点：DELETE /api/v1/documents/{document_id} （删除指定文档的所有向量和元数据）
+
+同样需要 API Key 鉴权。
+
+安全与运维机制
+
+API 鉴权：auth.py 实现，使用 FastAPI 的 Depends，从请求头 x-api-key 提取，与 config.py 中的 API_KEY 比对。若不匹配返回 403。
+
+文件清理：file_cleanup.py 中有一个后台任务，每隔 30 分钟扫描 /tmp/doc_uploads/ 目录，删除超过 1 小时未修改的临时文件，防止磁盘占满。
+
+配置项（位于 config.py，不可删除或重命名现有项）：
+
+API_KEY: 字符串，从环境变量或 .env 加载
+
+EMBEDDING_MODEL: 如 "deepseek-embedding"
+
+LLM_MODEL: 如 "deepseek-chat"
+
+CHROMA_PERSIST_DIR: "./chroma_data"
+
+COLLECTION_NAME: "doc_master"
+
+CHUNK_SIZE: 512
+
+CHUNK_OVERLAP: 128
+
+VECTOR_WEIGHT: 0.7
+
+KEYWORD_WEIGHT: 0.3
+
+TEMP_UPLOAD_DIR: "/tmp/doc_uploads"
+
+CLEANUP_INTERVAL_MINUTES: 30
+
+FILE_MAX_AGE_MINUTES: 60
+
+给 AI 的更新操作指南：
+
+若要新增接口，必须在 routers/ 下添加文件，并在 main.py 中注册，保留原有路由不变。
+
+若需修改检索策略，只能通过新增参数或策略切换实现（如在配置中加入可选参数），默认行为必须保持不变。
+
+所有代码注释和文档字符串必须用中文。
+
+前端部分也需保持现有上传和聊天功能，新增界面只能累加，不可改动现有组件结构。
+
+测试用例位于 tests/ 目录，所有更新需要确保原有测试通过，新增测试覆盖新功能。
+
+不得擅自升级或更换核心依赖的 major 版本。
+
+请 AI 严格遵循以上规范，该文档即为唯一事实来源。

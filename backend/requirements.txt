@@ -11,3 +11,16 @@ python-docx>=1.1.0
 pypdf>=4.2.0
 Pillow>=10.3.0
 PyMuPDF>=1.26.0
+
+# === 智能 RAG 知识库新增依赖 ===
+# ChromaDB（向量数据库）
+chromadb>=0.5.0
+# LangChain（文本分割器）
+langchain>=0.3.0
+langchain-text-splitters>=0.3.0
+# BM25 关键词检索
+rank-bm25>=0.2.2
+# HTTP 请求（调用 DeepSeek API）
+requests>=2.31.0
+# 环境变量加载（.env 文件支持）
+python-dotenv>=1.0.0
