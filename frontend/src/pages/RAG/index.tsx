@@ -19,7 +19,9 @@ const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
 // 从环境变量或默认值获取 API Base URL
-const API_BASE = (import.meta as any).env?.VITE_API_BASE || '/api/v1';
+// RAG 接口统一挂载在 /api/v1 前缀下
+// VITE_API_BASE 与格式转换模块共用（如 https://xxx.up.railway.app/api），此处追加 /v1
+const API_BASE = `${(import.meta as any).env?.VITE_API_BASE || '/api'}/v1`;
 
 /** 创建带 API Key 的 Axios 实例 */
 const ragApi = axios.create({
