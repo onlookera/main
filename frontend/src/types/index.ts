@@ -14,7 +14,8 @@ export type ConversionType =
   | 'ppt_to_pdf'
   | 'ppt_to_word'
   | 'pdf_merge'
-  | 'pdf_split';
+  | 'pdf_split'
+  | 'ppt_compress';
 
 /** 转换任务状态 */
 export type TaskStatus = 'uploading' | 'pending' | 'processing' | 'completed' | 'failed';

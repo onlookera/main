@@ -19,6 +19,7 @@ ConversionType = Literal[
     'ppt_to_word',
     'pdf_merge',
     'pdf_split',
+    'ppt_compress',
 ]
 
 # 任务状态

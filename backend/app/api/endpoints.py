@@ -40,6 +40,7 @@ from ..services.word_to_pdf import convert_word_to_pdf
 from ..services.ppt_to_pdf import convert_ppt_to_pdf
 from ..services.ppt_to_word import convert_ppt_to_word
 from ..services.pdf_merge_split import merge_pdfs, split_pdf_all_pages
+from ..services.compress_ppt import compress_pptx
 
 # 创建路由器，所有接口统一加 /api 前缀
 router = APIRouter(prefix='/api', tags=['DocMaster'])
@@ -190,8 +191,20 @@ def _execute_conversion(task_id: str, conversion_type: str, extra_task_ids=None)
             output_ext = 'zip'
             output_filename = get_output_filename(task.filename, 'zip')
 
+        elif conversion_type == 'ppt_compress':
+            # PPT 压缩：图片优化 + ZIP 极限压缩（内容不丢失）
+            compress_pptx(
+                input_path, output_path,
+                max_image_width=1920,
+                jpeg_quality=70,
+                progress_callback=lambda msg: on_progress(50),
+            )
+            on_progress(100)
+            output_filename = get_output_filename(task.filename, 'pptx').replace(
+                '_已转换', '_已压缩'
+            )
+
         elif conversion_type == 'pdf_merge':
-            # 收集所有待合并的 PDF 文件路径
             merge_paths = [input_path]
             if extra_task_ids:
                 for tid in extra_task_ids:
@@ -252,6 +265,7 @@ def _get_output_extension(conversion_type: str) -> str:
         'ppt_to_word': 'docx',
         'pdf_split': 'zip',
         'pdf_merge': 'pdf',
+        'ppt_compress': 'pptx',
     }
     return mapping.get(conversion_type, 'bin')
 

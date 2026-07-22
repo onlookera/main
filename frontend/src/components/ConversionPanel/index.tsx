@@ -68,6 +68,14 @@ const CONVERSION_OPTIONS: ConversionOption[] = [
     icon: '📋',
     description: '提取 PPT 文本内容生成 Word 文档',
   },
+  {
+    value: 'ppt_compress',
+    label: 'PPT 极限压缩',
+    sourceFormat: 'pptx',
+    targetFormat: 'pptx',
+    icon: '🗜️',
+    description: '大幅缩小 PPT 文件体积（如 200MB→50MB），图片智能压缩，内容不丢失',
+  },
 ];
 
 const ConversionPanel: React.FC<ConversionPanelProps> = ({

@@ -28,6 +28,7 @@ const CONVERSION_LABELS: Record<ConversionType, string> = {
   ppt_to_word: 'PPT → Word',
   pdf_merge: 'PDF 合并',
   pdf_split: 'PDF 拆分',
+  ppt_compress: 'PPT 压缩',
 };
 
 /** 状态标签配置 */
