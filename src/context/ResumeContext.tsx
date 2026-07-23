@@ -49,7 +49,7 @@ function resumeReducer(state: ResumeState, action: ResumeAction): ResumeState {
         const topFields: Partial<Module> = {};
         const dataFields: Record<string, any> = {};
         for (const [key, val] of Object.entries(payload)) {
-          if (key === 'section' || key === 'title' || key === 'visible') {
+          if (key === 'section' || key === 'visible') {
             (topFields as any)[key] = val;
           } else {
             dataFields[key] = val;

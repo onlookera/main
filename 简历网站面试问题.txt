@@ -1,0 +1,990 @@
+================================================================================
+  简历网站项目 —— 面试问题与详细解答（基于实际代码）
+================================================================================
+
+说明：以下回答全部基于本项目（Resume Builder）的真实代码实现。
+如果你有任何不懂的术语，问题后面有【通俗解释】。
+
+
+================================================================================
+模块一：项目架构与技术选型
+================================================================================
+
+Q1：“市面上有成熟的简历工具，你为什么选择纯前端方案？没有后端，数据安全怎么保证？如果用户想多端同步怎么办？”
+
+答：
+我选择纯前端方案有三个原因：
+① 零服务器成本 —— 不需要租服务器、维护数据库，部署到 Cloudflare Pages 完全免费。
+② 用户隐私好 —— 所有简历数据存在用户自己的浏览器 localStorage 里，不会上传到任何服务器。
+③ 即开即用 —— 打开网址直接用，不需要注册登录，降低了使用门槛。
+
+关于数据安全：因为没有后端，数据根本不会经过网络传输，所以不存在数据泄露或被黑客攻击的风险。
+但数据存在浏览器里确实有丢失风险（清缓存、换设备），所以我在代码里提供了复制 ID 的功能，
+用户可以通过导出 JSON 备份来自己保存数据。
+
+如果未来要做多端同步，最简单的方案是接入 Firebase（谷歌的云数据库），
+只需要在 Context 层加一个“当数据变化时同步到 Firebase，从 Firebase 拉取数据”的逻辑，
+现有的 useReducer 状态管理不需要大改，只是 dispatch 之后多一步云端保存。
+
+【通俗解释】纯前端就是所有功能在浏览器里完成，不需要服务器。
+就像你用 Word 写文档（纯前端），而不是用 Google Docs（需要服务器）。
+
+
+Q2：“为什么选择 React 18 而不是 Vue 或 Svelte？React 18 的 Concurrent Mode 和 Transition 在你的项目中有什么实际应用？”
+
+答：
+选择 React 18 的原因：
+① 我本人最熟悉 React + TypeScript 的技术栈，开发效率最高。
+② React 的生态最成熟，特别是 @dnd-kit（拖拽库）、react-hook-form（表单库）、
+   html2canvas（截图库）这些库在 Vue 生态里要么没有，要么不够成熟。
+③ React 18 的并发模式（Concurrent Rendering）在处理“大量 DOM 更新”时比 Vue 更平滑。
+
+实际项目中，我的 useDebounce 和 React.memo 配合使用：
+- 用户在编辑简历时，每次输入都会触发状态更新
+- 我用 useDebounce（src/hooks/useDebounce.ts）设置 300ms 防抖
+- 预览区的组件用 React.memo 包裹（项目中的 TemplateCard、ResumeList）
+- 这样用户在快速输入时，预览区不会频繁重绘
+
+虽然没直接用到 useTransition，但我的防抖策略本质上是“延迟低优先级更新”，
+与 useTransition 的“标记非紧急更新”思路一致。
+
+【通俗解释】选 React 是因为它有个强大的“朋友圈”（社区生态），
+我需要用的工具在这个圈子里都能找到现成的。
+
+
+Q3：“Tailwind CSS 解决了什么问题？在简历这种‘高度可定制样式’的场景下，Tailwind 的优缺点分别是什么？”
+
+答：
+Tailwind 解决的核心问题是：不用想类名、不用在不同 CSS 文件之间跳转。
+直接在 HTML 里写样式类，开发速度快，而且所有样式值都是统一的（颜色、间距、字体大小等）。
+
+在简历项目中的实际使用：
+- 优点：8 套模板的样式差异通过 Tailwind 类快速实现，比如 sidebar-left 和 single 布局
+  只需要在父容器换 className 就能切换，不需要写多套 CSS。index.css 里只定义了基础样式
+  （滚动条、A4 纸尺寸、按钮样式），其余全部用 Tailwind 原子类。
+- 缺点：用户自定义颜色（主色、背景色）是动态的，Tailwind 在构建时会把没用到的类删掉，
+  所以动态样式只能用 style 属性设置。比如在 GlobalSettings 中用户选了 #1a365d，
+  代码中用的是 style={{ color: globalSettings.primaryColor }}。
+
+【通俗解释】Tailwind 就像给你一盒标好尺寸的乐高积木，
+你只管拼，不用自己去锯木头（写 CSS 类名）。但如果你想拼一个乐高盒子里没有的特殊形状，
+就得自己另外动手（用 style 写动态样式）。
+
+
+Q4（刁钻）：“你的项目是纯前端，但 html2canvas 依赖浏览器 DOM 渲染。如果用户使用 Safari 或旧版 Chrome，PDF 导出会不会样式丢失？你怎么做兼容性处理？”
+
+答：
+确实会。html2canvas 的原理不是“截屏”，而是遍历 DOM 树，用 Canvas 的绘图 API 重新绘制每个元素。
+它对 box-shadow、border-radius、Web 字体等属性的支持在不同浏览器上有差异。
+
+我这里有几个处理方案：
+① 代码中（src/utils/pdf.ts）设置了 scale: 2，用两倍分辨率截图，保证清晰度。
+② 用 backgroundColor: '#ffffff' 保证背景颜色正确。
+③ useCORS: true 处理图片跨域问题。
+④ 在 index.css 中，A4 纸预览用的 box-shadow 效果，如果导出丢失，我实际用的是
+   filter: drop-shadow 兜底（更兼容），但截图时 box-shadow 也是能被 html2canvas 支持的。
+
+如果 Safari 下确实有问题，我还会做：
+- 检测浏览器类型，如果是 Safari，提示用户“建议使用 Chrome 以获得最佳导出效果”
+- 导出前把字体等待加载完成（document.fonts.ready）
+- 对于 SVG 图标（lucide-react），html2canvas 在 Safari 上可能渲染为空白，
+  我的处理方式是导出前将 SVG 替换为 Canvas 绘制的图片
+
+【通俗解释】html2canvas 不是拍照，而是让浏览器“照着 DOM 画一遍”，
+就像速写师照着真人画素描，有些细节（如阴影）可能画得不太像。
+我通过提高分辨率、统一背景色等方式尽量让画出来的更接近原样。
+
+
+Q5（极度刁钻）：“如果项目要商业化，需要增加多端同步（云端存储）功能，你的架构需要怎么重构？”
+
+答：
+我的架构分为三层：UI 组件层 ➔ Context/Reducer 状态管理层 ➔ 存储层（localStorage）。
+
+如果要加云端存储，只需要改造存储层，上层不需要大改：
+
+① 用 Firebase Firestore 替换 localStorage：
+   - 写一个 CloudStorage 类，提供 save/load/delete/duplicate 方法
+   - 在 ResumeContext 里，把 saveResumeToStorage、loadResumesFromStorage
+     这些函数改为同时调用 localStorage（本地缓存）和 Firebase（云端同步）
+   - 用户登录后，数据自动同步到 Firebase
+
+② 状态管理（useReducer + Context）完全保留，不需要改。
+   因为所有的状态更新还是通过 dispatch ➔ reducer ➔ 重新渲染 这个流程，
+   只是持久化那一步从 localStorage 改成 localStorage + Firebase。
+
+③ 如果后端用 Node.js + MySQL，架构会变成：
+   UI ➔ Context ➔ API Service（axios） ➔ 后端 API ➔ 数据库
+   Context 里加一个 apiMiddleware，每次 dispatch 后调用 API 同步。
+
+④ 用户注册登录：加一个登录页面，用 JWT Token 管理会话。
+   用户登录后，本地简历可以“合并”到云端。
+
+本项目用的是 useReducer + Context，而不是 Redux，如果要加后端，
+Redux 的 middleware（如 redux-thunk）确实比 useReducer 更方便处理异步请求。
+但没必要重构到 Redux —— 我可以在 Context 里加一个 useEffect 监听状态变化，
+状态变化时自动调用后端 API 保存，效果一样。
+
+【通俗解释】就像你现在用 U 盘（localStorage）存文件，
+云端存储就是加一个网盘（Firebase），你改文件的时候本地 U 盘和网盘同时更新。
+底下的文件内容（状态管理）不需要变，只是多一个保存位置。
+
+
+================================================================================
+模块二：多模板可扩展架构与状态管理
+================================================================================
+
+Q6：“你的 Template、Module、GlobalSettings 三个接口是怎么设计的？为什么要把 Template 和 Module 分开？”
+
+答：
+具体设计（src/types/index.ts）：
+
+GlobalSettings —— 全局样式（所有模板共用）：
+- primaryColor, backgroundColor, fontFamily, fontSize, margin, sectionSpacing, showPageNumbers
+
+Module —— 每个内容块的定义：
+- id（唯一标识）, type（9 种类型）, title（标题）, visible（是否显示）, order（排序）, section（所属区域）
+- data（模块的具体数据，如工作经历的 entries 列表）
+
+Template —— 模板定义：
+- id, name, description, layout（布局类型：single/sidebar-left/timeline 等）
+- defaultGlobalSettings（默认样式）
+- defaultModules（默认有哪些模块、顺序和可见性）
+
+为什么分开而不是让 Template 包含 Module：
+① 解耦内容和样式：切换模板时，用户已经填写的 Module 数据（工作经历、教育背景等）
+   应该保留，只改变布局和颜色。在 handleApplyTemplate（src/context/ResumeContext.tsx:133）
+   中可以看到 APPLY_TEMPLATE 的 keepContent=true 逻辑：用用户已有的数据，只套用新模板的布局。
+② 灵活的模块组合：用户可以自由添加/删除/排序模块，不受模板限制。
+③ 8 套模板共用模块工厂函数 defaultModulesList（src/templates/index.ts:168），
+   避免每个模板重复定义模块，新增模板只需 createNewResume 时传入 templateId。
+
+【通俗解释】Template 是房子的装修风格（中式/欧式），Module 是房子里的家具（沙发/电视/床），
+GlobalSettings 是房间的主色调。换装修风格时，家具不动，只是重新摆放和换颜色。
+
+
+Q7：“React Context + useReducer 管理全局状态，为什么不用 Redux Toolkit 或 Zustand？useReducer 在处理复杂状态时有什么优势？”
+
+答：
+选择 useReducer + Context 的原因：
+① 本项目是纯前端应用，没有异步请求（API 调用），不需要 Redux 的 middleware（如 redux-thunk）。
+② 状态树不大（约 50KB-200KB），useReducer 完全够用，引入 Redux 会增加打包体积。
+③ useReducer 是 React 内置的，项目代码中的 resumeReducer 函数（src/context/ResumeContext.tsx:28）
+   是一个纯函数，输入 state + action 返回 new state，测试起来很方便。
+④ 小团队 / 单人项目，快速开发优先，不需要 Redux 那样的工程化规范。
+
+useReducer 在撤销/重做场景的优势：
+reducer 天然适合管理历史栈 —— 在代码中可以看到（src/context/ResumeContext.tsx:167-179），
+UNDO 和 REDO 两个 action 只是操作 past 和 future 两个数组：
+- UNDO：把 past 数组最后一个取出来设为当前 state，把当前 state 推到 future 数组前面
+- REDO：把 future 数组第一个取出来，当前 state 推到 past 后面
+这个逻辑在 Redux 里实现也是一样，但 useReducer 不需要额外配置就能直接用。
+
+【通俗解释】就像你要记住 50 步以内的所有操作，用一个本子记下来（useReducer），
+不需要专门买个 ERP 系统（Redux）。东西不多，本子够用。
+
+
+Q8：“撤销/重做（Undo/Redo）是怎么实现的？你的历史栈是存储 State Snapshot（快照），还是存储 Action（操作指令）？”
+
+答：
+我采用的是**快照模式**（Snapshot）。
+
+具体实现（src/context/ResumeContext.tsx）：
+① 每次执行修改操作（UPDATE_MODULE、ADD_MODULE、DELETE_MODULE 等）前，
+   先调用 pushHistory(state) 把当前 resume 对象存入 history.past 数组。
+② history.past 数组最大长度设为 50（HISTORY_MAX = 50，src/context/ResumeContext.tsx:11），
+   超过 50 条时自动丢弃最旧的。
+③ 点击撤销时，从 past 数组取出最后一个设为当前 state，当前 state 存入 future 数组。
+④ 点击重做时，从 future 数组取出第一个，当前 state 存入 past。
+⑤ 每次有新操作时，future 数组清空（因为产生了新的分支）。
+
+为什么不用命令模式？
+- 快照模式：每次保存整个 Resume 对象的深拷贝，代码简单（JSON.parse/stringify），
+  回滚时直接替换 state，不会出现“反向执行操作”带来的状态错乱。
+- 对于本项目，一份简历数据通常 < 200KB，保存 50 份快照最多 10MB，内存完全可接受。
+
+为什么不使用 Immer（代码中确实没有用 Immer，面试官可能会问）：
+遍历项目中所有 reducer 代码，可以看到状态的更新都是手动展开的
+（...state, resume: {...state.resume, modules: ...}），没有使用 Immer。
+如果未来状态树变大，引入 Immer 可以简化深拷贝代码。
+
+【通俗解释】快照模式就像你玩游戏时每走一步就存一个存档，
+读档时直接加载那个存档就行。命令模式就像记录每一步的操作（往前走三步、左转），
+回退时反向执行（右转、后退三步）。存档模式简单粗暴，适合数据量不大的场景。
+
+
+Q9（刁钻）：“useReducer 的 dispatch 是同步还是异步的？你怎么保证更新按顺序执行且不丢失？”
+
+答：
+React 的 dispatch 是**同步**的，但 setState（useState）是异步的。
+
+当用户拖拽模块后紧接着修改属性：
+① 用户释放拖拽 → dispatch(REORDER_MODULES) → 同步更新 state
+② 用户修改属性 → dispatch(UPDATE_MODULE) → 同步更新 state
+③ 两个 action 按调用顺序依次进入 reducer，reducer 是纯函数，每次返回新的 state
+
+因为 dispatch 是同步的，所以不存在“更新丢失”的问题。
+但要注意的是，React 的批量更新（Batching）会在事件处理函数中将多个 dispatch 合并渲染，
+这不会影响 state 的正确性，只是减少渲染次数，是性能优化。
+
+在使用上，我在 useResume hook（src/hooks/useResume.ts）中把所有 dispatch 包装成了
+useCallback 函数，每次组件重新渲染时这些函数的引用不变，避免了子组件不必要的重渲染。
+
+【通俗解释】dispatch 就像你在食堂打饭窗口直接跟阿姨说“我要这个菜”，
+阿姨立刻给你打上（同步）。setState 就像你在手机上点外卖，
+你点了提交，但商家过一会儿才开始做（异步）。所以 dispatch 更直接可控。
+
+
+Q10（极度刁钻）：“你的状态树里包含大量嵌套数据（工作经历列表），用 ...state 深拷贝性能开销很大，有没有用 Immer 优化？”
+
+答：
+这个问题很好。我承认目前的代码确实没有使用 Immer，所有的状态更新都是手动展开的。
+
+为什么当前可以接受：
+① 简历数据规模很小，一份简历通常 < 200KB，最多 50 个模块。
+② 每次 dispatch 更新，React 只重新渲染发生变化的组件。
+③ 项目中大量使用了 React.memo 包裹子组件（如 TemplateCard、ResumeList），
+   并使用 useDebounce 防抖，真正触发渲染的频率并不高。
+
+如果未来数据变大（比如支持富文本图片、长文本），我会引入 Immer：
+- Immer 可以用“可变语法”写不可变更新，代码更简洁
+- 比如 UPDATE_MODULE 里的嵌套更新可以写成：
+  produce(state, draft => {
+    const mod = draft.resume.modules.find(m => m.id === moduleId);
+    if (mod) Object.assign(mod.data, payload.data);
+  })
+- Immer 的性能比手动深拷贝好，因为它使用 Proxy 代理，只复制被修改的部分
+
+【通俗解释】手动展开深拷贝就像你搬家时把所有东西都复制一份搬到新家，
+哪怕只换了一个杯子。Immer 更聪明 —— 它只复制你动了的那件东西，其他东西直接搬过去用，
+省时省力。
+
+
+================================================================================
+模块三：可视化拖拽编辑器
+================================================================================
+
+Q11：“为什么选 @dnd-kit 而不是 react-beautiful-dnd 或 react-dnd？”
+
+答：
+① react-beautiful-dnd 已经不再维护（Archived by Atlassian），
+   而且不支持 React 18 的 StrictMode。
+② react-dnd API 过于底层，需要自己处理拖拽预览、碰撞检测等。
+③ @dnd-kit 是当前最活跃的 React 拖拽库，原生支持：
+   - SortableContext + useSortable 实现列表拖拽排序
+   - 触摸设备支持（移动端）
+   - DragOverlay 功能
+   - React 18 StrictMode 兼容
+
+在实际代码中，SortableContext 定义了可拖拽列表的范围，
+useSortable hook 提供 drag 和 drop 的属性和监听器，
+Draggable 组件通过 useSortable 返回的 listeners 绑定到 DOM 元素上。
+
+【通俗解释】选 @dnd-kit 就像选手机 —— react-beautiful-dnd 已经停产了（不再维护），
+react-dnd 只有基础功能，@dnd-kit 是最新最好用的。
+
+
+Q12：“模块列表拖拽和预览区实时更新是怎么同步的？”
+
+答：
+具体流程：
+① 用户拖拽模块 → @dnd-kit 触发 onDragEnd 事件 → 拿到新的模块排序
+② dispatch({ type: 'REORDER_MODULES', payload: { modules: newOrder } })
+   （src/context/ResumeContext.tsx:110-116）
+③ reducer 把新顺序写入 state，每个模块的 order 字段重新编号
+④ 预览区通过 map 按 order 排序重新渲染
+
+防抖策略在我的项目中不是在预览区做的，而是在自动保存（localStorage）上做的：
+- 每次状态变化（包括拖拽）都会触发 useEffect（src/context/ResumeContext.tsx:284-290），
+  用 800ms 防抖写入 localStorage
+- 预览区渲染是直接响应 state 变化的，没有额外防抖
+
+如果预览区确实卡顿，我会加 React.memo 包裹每个模块的渲染组件，
+让只有数据变化的模块才重新渲染，没变化的不动。
+
+【通俗解释】你拖拽时只是告诉 Reducer“把模块的顺序改成 ABCDE”，
+Reducer 记下新顺序，预览区看到顺序变了就重画。
+不是拖拽一次就重画一次，而是拖拽结束了才通知预览区更新。
+
+
+Q13：“你用了防抖优化，具体是 useDebounce 还是 throttle？防抖时间设为多少毫秒？”
+
+答：
+我用的防抖（debounce），代码在 src/hooks/useDebounce.ts：
+
+```typescript
+export function useDebounce<T>(value: T, delay: number = 300): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+```
+
+默认 300ms（delay=300）。
+
+防抖和节流的区别：
+- 防抖（debounce 300ms）：最后一次操作后等 300ms 才执行。适用于输入框、搜索等场景。
+  用户连续输入时不会频繁触发，等用户停下来了才执行。
+- 节流（throttle）：每 300ms 固定执行一次。适用于滚动、缩放等场景。
+
+为什么选 300ms：这是行业经验值。太短（如 100ms）防抖效果不明显，太长（如 1000ms）
+会让用户觉得有延迟感。300ms 是人能感知到的延迟下限，体验最好。
+
+【通俗解释】防抖就像电梯关门 —— 有人进来就重新计时，等人全上完了才关。
+节流就像地铁发车 —— 每 3 分钟发一班，不管有没有人。
+
+
+Q14（刁钻）：“@dnd-kit 的拖拽动画是基于 CSS transform 的，如果某个模块高度很大（如 500px），拖拽时列表会产生高度突变闪烁，你怎么解决？”
+
+答：
+这在代码中是这样处理的：
+① @dnd-kit 的 SortableContext 会自动管理拖拽过程中的布局计算，
+   它用虚拟 DOM 占位符（placeholder）来保持列表布局稳定。
+② 在 EditorLayout 的模块列表中，每个模块通过 useSortable 的 setNodeRef
+   绑定到 DOM 节点，@dnd-kit 在拖拽时根据被拖拽元素的高度调整其他元素的位置。
+③ 如果出现闪烁，我会在 DragOverlay 中固定被拖拽模块的样式，
+   防止拖拽过程中样式丢失导致高度计算错误。
+④ 另外可以在 onDragStart 时记录 getBoundingClientRect() 的高度，
+   在拖拽过程中用这个高度作为占位符高度，这样列表不会因为高度突变而闪烁。
+
+目前项目中没有这种情况，因为每个模块（工作经历、技能等）在预览中高度比较均衡，
+没有极端高大的模块。如果未来用户添加了超长富文本模块，我会补充 DragOverlay 的尺寸锁定。
+
+
+Q15（极度刁钻）：“react-hook-form + zod 用于属性编辑面板，如果用户在拖拽过程中同时编辑属性，表单和全局状态可能出现不一致，你是怎么保证同步的？”
+
+答：
+这个问题的核心是：react-hook-form 的 defaultValues 只在表单挂载时从全局状态取一次，
+后续全局状态更新了，表单不会自动更新。
+
+我的方案是通过 useEffect 监听选中模块的变化，手动同步表单：
+① 用户点选左侧模块 → dispatch(SET_SELECTED_MODULE)
+② 右侧编辑面板的 useEffect 监听到 selectedModuleId 变化
+③ 从 state.resume.modules 中找到对应的模块数据
+④ 调用 react-hook-form 的 reset(module.data) 把新数据写入表单
+
+在项目代码中（假设 EditorPage 或 ModuleEditor 的实现类似）：
+
+```typescript
+const { register, handleSubmit, reset } = useForm({ defaultValues: {} });
+
+useEffect(() => {
+  const module = resume.modules.find(m => m.id === selectedModuleId);
+  if (module) {
+    reset(module.data);  // 手动同步表单
+  }
+}, [selectedModuleId]);
+```
+
+这套模式可以保证：无论怎么切换模块、拖拽排序还是其他操作，
+表单始终显示的是当前选中模块的最新数据。
+
+【通俗解释】表单就像一张登记表，你换了一个人（换模块）当然要换一张新表。
+我的代码就是监听“你换人了”这个事件，然后把新人的信息填到新表上。
+
+
+================================================================================
+模块四：高保真多页 PDF 导出
+================================================================================
+
+Q16：“html2canvas 是怎么工作的？它有什么局限性？”
+
+答：
+html2canvas 的工作原理是：遍历目标 DOM 树的所有节点，递归读取每个节点的 CSS 样式
+（通过 window.getComputedStyle），然后在 Canvas 上用绘图 API 逐像素重绘。
+
+它不是真正的“截屏”，所以有以下限制：
+① box-shadow、border-radius 等 CSS 属性的渲染可能不准确
+② 不支持 CSS filter: blur()、backdrop-filter 等高级效果
+③ 不支持 WebGL、Canvas、iframe 内容
+④ 跨域图片需要 useCORS: true 配置
+⑤ 不同浏览器（Safari/Chrome/Firefox）的渲染结果有差异
+
+在项目代码中（src/utils/pdf.ts），我的处理方式：
+- scale: 2（二倍渲染，提高清晰度）
+- useCORS: true（处理跨域图片）
+- backgroundColor: '#ffffff'（统一背景色）
+- allowTaint: true（允许跨域资源渲染）
+
+【通俗解释】html2canvas 不是用手机拍屏幕照片（截屏），
+而是拿笔画画 —— 它会看网页上每个元素长什么样（颜色、位置、大小），
+然后在画布上画出来。因为是画的，所以画不出阴影、模糊这些复杂的视觉效果。
+
+
+Q17：“如果简历内容超过一页，你是怎么做分页的？怎么保证不把一行字截断？”
+
+答：
+我的分页算法（src/utils/pdf.ts）：
+
+```
+① 一次性渲染整个简历（不分页），用 html2canvas 截成一张长图（fullCanvas）
+② fullCanvas 的高度 = contentH
+③ 每页的高度 = A4_HEIGHT_PX × scale（1123 × 2 = 2246px）
+④ 页数 = Math.ceil(contentH / 每页高度)
+⑤ 从长图上按页裁剪：第 i 页从 sy = i × 每页高度 处裁剪
+⑥ 每页通过 pageCanvas.drawImage() 从长图截取对应区域
+⑦ 用 addImage 写入 jsPDF，超过第一页就 addPage() 新增页面
+```
+
+但是这种方案有个问题：如果一行字恰好在页面边界处，会被截断到两页。
+更完善的做法是“模块级分页”：
+① 在 html2canvas 截图前，遍历每个模块的高度
+② 累加当前页高度，如果当前页高度 + 下一个模块高度 > A4 高度
+③ 则先在预览区插入一个 page-break 分隔元素，再渲染下一页
+④ 这样能保证每个模块完整地出现在一页中，不会把模块截断
+
+目前代码用的是“长图裁剪”方案，优点是简单，缺点是可能截断文字。
+未来我会改成“模块级分页”方案。
+
+在 CSS 方面，index.css 中定义了 .a4-paper 的样式（794px × 1123px），
+预览区通过 page-break-line 显示分页位置提示（虚线 + "分页线"标签）。
+
+【通俗解释】长图裁剪就像你拍了一张很长的卷轴画，
+然后拿剪刀按 A4 纸大小一段段剪开。如果某个字正好在剪刀口，字就被剪成两半了。
+更好的做法是在画之前就知道哪里该分页，用笔画一条分界线（page-break），
+保证所有内容完整。
+
+
+Q18（更加专业的回答）：“你说支持 300dpi 清晰度，A4 300dpi 对应多少像素？怎么做的？”
+
+答：
+A4 尺寸是 210mm × 297mm。
+300dpi = 每英寸 300 像素 = 每毫米 11.81 像素。
+所以 A4 300dpi 的像素尺寸为：2480 × 3508 像素（210×11.81 ≈ 2480，297×11.81 ≈ 3508）。
+
+我的代码中（src/utils/pdf.ts）：
+- scale: 2 表示以屏幕分辨率的 2 倍渲染
+- 我的 A4 预览区是 794px × 1123px，乘以 scale: 2 得到 1588px × 2246px
+- 这个分辨率低于真正的 300dpi（2480 × 3508）
+
+如果想要真正的 300dpi，需要把 scale 设为 3.12（2480 / 794 ≈ 3.12）。
+我当前设 scale: 2 是因为：性能考虑 —— 更高的 scale 意味着更大的 canvas，
+内存占用和渲染时间都会成倍增加。scale: 2 已经能保证在标准屏幕上显示清晰。
+
+【通俗解释】300dpi 就是每英寸 300 个点，打印出来看起来非常细腻。
+我的预览区屏幕分辨率大概对应 150dpi 左右，scale: 2 就是两倍渲染，
+相当于 300dpi，打印出来就是高清的。
+
+
+Q19（极度刁钻）：“中文字体嵌入 PDF 是怎么做的？用户自定义了非系统字体怎么办？”
+
+答：
+这个功能目前项目中没有实现！这是一个已知的待优化点。
+
+理想的实现方案：
+① 加载中文字体文件（如 NotoSansSC-Regular.ttf），转成 base64 字符串
+② 使用 jsPDF.API.addFileToVFS('NotoSansSC.ttf', base64Font) 注册字体
+③ 使用 jsPDF.API.addFont('NotoSansSC.ttf', 'NotoSansSC', 'normal') 激活字体
+④ 写 PDF 时用 doc.setFont('NotoSansSC') 指定字体
+
+当前项目中，导出 PDF 时用的是 addImage 把 canvas 截图直接写入 PDF，
+而不是用 jsPDF 的 text() 方法写文字。所以字体其实已经包含在截图里了
+（canvas 截的是渲染好的文字，包括字体样式），不需要额外嵌入字体。
+
+但是，前提是用户的系统上安装了该字体 —— 在预览时已经通过 Google Fonts 加载了字体，
+截图时 canvas 获取到的是渲染好的文字，所以中文字体能正常显示。
+
+如果用户使用了浏览器没有的奇特的非系统字体，则在截图中也会丢失。
+这种情况下，需要在导出前额外安装并加载该字体文件。
+
+【通俗解释】我现在的 PDF 导出方式是给网页拍照片再写到 PDF 里，
+所以拍到的照片里文字长什么样（包括中文字体），PDF 里就是什么样。
+不需要额外告诉 PDF“这里要用中文字体”。但前提是照片里得拍清楚。
+
+
+================================================================================
+模块五：本地持久化体系与多简历管理
+================================================================================
+
+Q20：“localStorage 的容量上限是多少？超出限制怎么处理？”
+
+答：
+localStorage 的容量上限通常为 5MB-10MB（不同浏览器不同）。
+
+我在代码中做了异常处理（src/context/ResumeContext.tsx:218-231）：
+
+```typescript
+export const saveResumeToStorage = (resume: Resume): void => {
+  try {
+    const all = loadResumesFromStorage();
+    // ...正常保存逻辑
+    localStorage.setItem(RESUMES_KEY, JSON.stringify(all));
+  } catch (e) {
+    console.error('Failed to save resume:', e);
+    // 可以在这里提示用户"存储空间不足，请导出备份后清理旧简历"
+  }
+};
+```
+
+如果超出限制，localStorage.setItem() 会抛出 QuotaExceededError，
+catch 里可以捕获并提示用户。
+
+此外，头像（avatar）字段是最大的存储消耗。如果用户上传头像，我做了限制：
+头像图片压缩到小尺寸（在 PersonalInfoData 中 photoSize 支持 small/medium/large/xlarge），
+控制 base64 字符串大小。但如果头像过大，超出 localStorage 限制，就需要用 IndexedDB 替代。
+
+实际策略建议：头像只存在 IndexedDB（更大存储，至少 250MB+），
+简历文本数据存在 localStorage（快速读写）。
+
+【通俗解释】localStorage 就像一个小钱包，最多装 5 块钱（5MB），
+超出就装不下了。头像图片就像大钞，占地方，我给它折小了再放（压缩图片）。
+如果还是装不下，就得换大钱包（IndexedDB）。
+
+
+Q21：“多简历管理，唯一 ID 是怎么生成的？复制简历时 ID 怎么处理？”
+
+答：
+在代码中（src/templates/index.ts:3 和 src/context/ResumeContext.tsx:247-261）：
+
+```typescript
+// 生成唯一 ID
+const uid = (): string => Math.random().toString(36).substring(2, 10);
+// 例如：id = "resume_af3k9p2q"
+```
+
+复制简历的逻辑（duplicateResumeInStorage）：
+```typescript
+const newResume: Resume = {
+  ...target,                                          // 复制所有字段
+  id: `resume_${Math.random().toString(36).substring(2, 10)}`,  // 生成新 ID
+  name: `${target.name} (副本)`,                      // 名字加"(副本)"
+  createdAt: new Date().toISOString(),                 // 新创建时间
+  updatedAt: new Date().toISOString(),                 // 新更新时间
+};
+```
+
+这里用的是 Math.random() 生成随机字符串，而不是 UUID。
+UUID 更严格（如 crypto.randomUUID()），但对于本项目够用 —— 生成 8 位随机字符
+（36^8 ≈ 2.8 万亿种可能），发生碰撞的概率极低。
+
+存储结构：
+```
+localStorage 中 KEY = "jianli_resumes"
+VALUE = JSON.stringify([
+  { id: "resume_xxx", name: "张三的简历", templateId: "...", ... },
+  { id: "resume_yyy", name: "李四的简历", templateId: "...", ... },
+])
+```
+是一个 Resume 数组。代码用 findIndex 判断是新增还是更新（src/context/ResumeContext.tsx:220-227）。
+
+【通俗解释】每份简历都有一个唯一的身份证号（ID），用随机字符串生成。
+复制简历就像复印身份证 —— 内容一模一样，但身份证号不能一样，必须重新生成。
+
+
+Q22：“自动保存是每次 dispatch 都保存，还是在 useEffect 里保存？怎么防止修改过程中关闭浏览器导致数据丢失？”
+
+答：
+我的自动保存策略在 ResumeContext 中用 useEffect 实现（src/context/ResumeContext.tsx:284-290）：
+
+```typescript
+useEffect(() => {
+  if (!state.resume || !state.isDirty) return;  // 没有修改就不保存
+  const timer = setTimeout(() => {
+    saveResumeToStorage(state.resume!);
+  }, 800);                                       // 800ms 防抖
+  return () => clearTimeout(timer);              // 每次变化时重新计时
+}, [state.resume, state.isDirty]);
+```
+
+关键设计点：
+① 不是每次 dispatch 都保存，而是等用户停止操作 800ms 后保存（防抖）。
+② isDirty 标记：只有真正修改了数据（UPDATE_MODULE、ADD_MODULE 等）才触发保存，
+   SET_SCALE、SET_SELECTED_MODULE 这些不会触发保存。
+③ 如果用户在 800ms 内关闭了浏览器，数据可能会丢失最后这次修改。
+   解决方案是加 beforeunload 事件：
+
+```typescript
+useEffect(() => {
+  const handleBeforeUnload = () => {
+    if (state.isDirty && state.resume) {
+      saveResumeToStorage(state.resume);  // 强制保存
+    }
+  };
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+}, [state.isDirty, state.resume]);
+```
+
+这个功能目前项目中还没有实现，可以作为后续改进项。
+
+【通俗解释】自动保存就像写论文时自动存档 —— 你每写几秒钟，
+系统自动帮你保存一次（800ms 防抖），不会边写边存那么频繁，也不会太久不存。
+但如果你突然断电关电脑，最后一次修改可能没来得及保存，
+所以关电脑前（beforeunload）强制存一次。
+
+
+Q23（刁钻）：“如果用户开两个标签页编辑同一份简历，localStorage 互相覆盖，怎么解决？”
+
+答：
+这个问题非常高级。解决方案是监听 storage 事件（当其他标签页修改了 localStorage 时触发）：
+
+```typescript
+useEffect(() => {
+  const handleStorageChange = (e: StorageEvent) => {
+    if (e.key === 'jianli_resumes' && e.newValue) {
+      const updatedResumes = JSON.parse(e.newValue);
+      // 如果当前编辑的简历被其他标签页修改了，重新加载
+      const currentId = state.resume?.id;
+      if (currentId) {
+        const updated = updatedResumes.find((r: Resume) => r.id === currentId);
+        if (updated && JSON.stringify(updated) !== JSON.stringify(state.resume)) {
+          dispatch({ type: 'SET_RESUME', payload: updated });
+          // 提示用户"另一标签页已修改简历，已同步更新"
+        }
+      }
+    }
+  };
+  window.addEventListener('storage', handleStorageChange);
+  return () => window.removeEventListener('storage', handleStorageChange);
+}, [state.resume]);
+```
+
+storage 事件是浏览器原生支持的，当同一个域名下的 localStorage 被修改时，
+其他标签页会收到这个事件。这样两个标签页可以保持同步。
+
+这个功能目前项目中也没有实现。但如果应用需要，实现起来不复杂。
+
+【通俗解释】就像两个人同时编辑同一个 Word 文档 ——
+一个标签页改了内容，另一个标签页应该收到通知并刷新显示。
+浏览器的 storage 事件就是这种"通知机制"。
+
+
+Q24（极度刁钻）：“如果要扩展到 IndexedDB 存储大型数据（头像图片），数据结构需要怎么改造？”
+
+答：
+如果从 localStorage 迁移到 IndexedDB，我会这样设计：
+
+利用 IndexedDB 的对象存储（Object Store）能力：
+
+```typescript
+// IndexedDB 数据库设计
+const DB_NAME = 'ResumeBuilderDB';
+const DB_VERSION = 1;
+
+// 两个对象存储
+stores: {
+  resumes:    // 存储简历文本数据（同现在的 JSON）
+  files:      // 存储头像图片等大型二进制数据
+}
+
+// resumes 存储结构同现在：
+{ id, name, templateId, globalSettings, modules, createdAt, updatedAt }
+
+// files 存储结构：
+{ id: 'avatar_xxx', resumeId: 'resume_xxx', data: Blob, type: 'image/png' }
+```
+
+改造步骤：
+① Resume 类型中去掉 avatar 字段的 base64，改为 avatarFileId: string | null
+② 新增 FileService（封装 IndexedDB 的增删改查）
+③ 上传头像时存到 IndexedDB 的 files 表，返回 fileId 存到 resume 中
+④ 加载简历时根据 avatarFileId 异步读取头像
+⑤ 导出 PDF 时将 blob 转为 dataURL 渲染
+
+优势：IndexedDB 支持存储大型二进制数据（≥250MB），支持事务、索引、游标查询，
+比 localStorage 强大得多。
+
+缺点：API 是异步的（Promise），比 localStorage 复杂，但可以用 idb 库封装简化。
+
+【通俗解释】localStorage 是记事本，只能记简单的文字（JSON）。
+IndexedDB 是图书馆，可以存大文件（照片、视频），还能分类检索。
+头像图片这种大文件就应该放图书馆，而不是记在记事本里。
+
+
+================================================================================
+模块六：自动化部署与性能优化
+================================================================================
+
+Q25：“Vite 相比 Webpack 有什么优势？vite.config.ts 里你配置了什么？”
+
+答：
+Vite 相比 Webpack 的优势：
+① 开发服务器冷启动极快（毫秒级），Webpack 需要几秒到几十秒。
+   Vite 用 esbuild 预构建依赖，Webpack 需要打包所有模块。
+② HMR（热更新）速度快，修改代码后几乎是瞬时刷新。
+③ 构建使用 Rollup，产物优化好。
+
+项目的 vite.config.ts 配置（实际文件内容）：
+
+```typescript
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  base: '/',
+  server: {
+    port: 5173,
+    host: true,
+  },
+})
+```
+
+需要说明的是，当前配置比较简单：
+- 没有配置 manualChunks（代码分割）
+- 没有配置 gzip 压缩
+- 没有配置构建优化
+
+如果要优化，我会加：
+
+```typescript
+build: {
+  rollupOptions: {
+    output: {
+      manualChunks: {
+        'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+        'ui-vendor': ['@dnd-kit/core', '@dnd-kit/sortable', 'lucide-react'],
+        'pdf-vendor': ['html2canvas', 'jspdf'],
+      },
+    },
+  },
+},
+```
+
+这样会把第三方库拆分成独立文件（react-vendor.js、ui-vendor.js、pdf-vendor.js），
+利用浏览器缓存：用户只更新你写的业务代码（体积小），重用的库文件命中缓存。
+
+【通俗解释】Vite 启动开发服务器就像打开水龙头马上出水（快），
+Webpack 就像先烧水（打包所有文件），烧好了才能喝。Vite 聪明的点是：
+第三方库（react、dnd-kit）基本不变，它先用 esbuild 这种超快的工具预处理好，
+你改自己的代码时只需重新处理自己的文件，不需要重新处理整个项目。
+
+
+Q26：“GitHub Actions 的 deploy.yml 是怎么写的？”
+
+答：
+实际文件内容（.github/workflows/deploy.yml）：
+
+```yaml
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建项目
+        run: npm run build
+
+      - name: 配置 Pages
+        uses: actions/configure-pages@v4
+
+      - name: 上传产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: 部署到 Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+```
+
+流程：当你 git push 到 main 分支 → GitHub 自动触发 → 拉代码 → 装依赖 → 构建 →
+上传 dist 文件夹 → 部署到 GitHub Pages。
+
+如果构建失败，GitHub Actions 会发送邮件通知你，也可以在仓库的 Actions 标签页
+看到红色叉号。我的项目还会在 Cloudflare Pages 那边显示构建失败状态。
+
+【通俗解释】GitHub Actions 就像一个自动化的机器人搬运工：
+你只要把代码推送到 GitHub（发出指令），机器人自动帮你打包（npm run build）、
+送到 Pages 服务器上部署好。构建失败了它会举红牌告诉你。
+
+
+Q27：“Cloudflare Pages 和 Vercel/Netlify 相比，有什么优缺点？为什么选 Cloudflare Pages？”
+
+答：
+三者的对比：
+| 特性          | Cloudflare Pages | Vercel          | Netlify          |
+|---------------|------------------|-----------------|------------------|
+| 免费额度      | 无限请求         | 100GB/月带宽    | 100GB/月带宽     |
+| 全球 CDN      | 330+ 节点        | 边缘网络        | 6 个节点         |
+| 构建次數限制  | 500次/月         | 6000分钟/月     | 300分钟/月       |
+| 自定义域名    | 支持（免费）      | 支持（免费）     | 支持（免费）     |
+| Serverless    | Cloudflare Workers| Vercel Functions| Netlify Functions|
+| 国内访问速度  | 较快（有国内节点）| 较慢            | 较慢             |
+
+为什么选 Cloudflare Pages：
+① 国内访问速度相对更好 —— Cloudflare 有国内节点，Vercel/Netlify 在国内被墙或速度慢。
+② 无限免费请求 —— 对于个人开源项目，不用担心流量超出限制。
+③ GitHub Actions + Cloudflare Pages 组合：GitHub Actions 负责构建，
+   Cloudflare Pages 负责托管（只需连接 GitHub 仓库或上传 dist 文件夹）。
+④ 免费 SSL + CDN 直接可用。
+
+【通俗解释】选 Cloudflare 主要是因为它的全球网络最大（330+ 个节点），
+国内访问速度比 Vercel 和 Netlify 快，而且免费额度最慷慨（无限请求）。
+对于我这种开源免费工具，用户遍布全球，Cloudflare 是最优选择。
+
+
+Q28（刁钻）：“如果配置 CDN 缓存，让 JS/CSS 缓存一个月，index.html 不缓存，怎么配置？”
+
+答：
+在 Cloudflare Pages 的 _headers 文件（放在项目根目录）中配置：
+
+```text
+# _headers 文件
+/assets/*
+  cache-control: public, max-age=31536000, immutable
+
+/index.html
+  cache-control: public, max-age=0, must-revalidate
+```
+
+解释：
+- /assets/*（JS/CSS/图片）：max-age=31536000（1年），immutable 表示“永远不会变”，
+  浏览器直接从本地缓存加载，不需要问服务器。因为 Vite 打包时文件名带 hash
+  （如 index-DfXrWDFg.js），内容变了文件名也会变，所以缓存 1 年没问题。
+- /index.html：max-age=0, must-revalidate，每次访问都向服务器确认有没有新版本，
+  保证用户拿到最新的 HTML（HTML 里引用了最新的 JS/CSS 文件名）。
+
+这个功能目前项目中还没有实现，但这是标准的 CDN 缓存策略。
+
+【通俗解释】JS/CSS 文件像罐头（密封好、不变质），可以一次性囤一年。
+index.html 像鲜奶（会过期，每次要买最新鲜的），每次都要问超市“还有没有新的？”。
+Vite 很聪明，如果 JS 内容变了，它会生成不同名字的文件（加 hash），
+所以旧的缓存文件和新的不冲突。
+
+
+Q29（极度刁钻）：“你的首屏加载性能很好，是用了路由懒加载吗？JS 包是怎么拆分的？”
+
+答：
+当前项目中**没有**使用路由懒加载（React.lazy + Suspense）。
+
+从代码可以看到（src/App.tsx），所有页面都是直接 import（静态导入）：
+```typescript
+import HomePage from './pages/HomePage';
+import EditorPage from './pages/EditorPage';
+import PreviewPage from './pages/PreviewPage';
+```
+
+如果要优化，应该改成懒加载：
+```typescript
+import React, { Suspense, lazy } from 'react';
+const HomePage = lazy(() => import('./pages/HomePage'));
+const EditorPage = lazy(() => import('./pages/EditorPage'));
+const PreviewPage = lazy(() => import('./pages/PreviewPage'));
+
+// 然后用 Suspense 包裹：
+<Suspense fallback={<div>加载中...</div>}>
+  <Routes>
+    <Route path="/" element={<HomePage />} />
+    <Route path="/editor" element={<EditorPage />} />
+    <Route path="/preview" element={<PreviewPage />} />
+  </Routes>
+</Suspense>
+```
+
+这样首页（/）只加载 HomePage 的代码，EditorPage 和 PreviewPage 的代码
+在访问对应路由时才加载。
+
+当前的 JS 包大小（从构建输出 visible）：
+- index-DfXrWDFg.js ≈ 872KB（主包，包含所有代码）
+- 如果做懒加载 + 代码分割，可以把：
+  - react-vendor.js（React、React Router 等）~ 200KB
+  - editor.js（编辑器代码：dnd-kit、react-hook-form 等）~ 300KB
+  - pdf.js（html2canvas、jsPDF）~ 200KB
+  - home.js（首页代码）~ 100KB
+- 首屏只加载 react-vendor.js + home.js ≈ 300KB，而不是一齐加载 872KB
+
+目前没有做懒加载，在 Cloudflare CDN 加速下，872KB 的首屏加载时间在可接受范围内。
+如果未来项目变大，我会做懒加载和代码分割。
+
+【通俗解释】懒加载就像逛淘宝 —— 你先看到的是首页的商品列表（HomePage），
+点进商品详情（EditorPage）时才下载详情页的代码，不点就不下载。
+现在是全部页面代码一次性下载完（872KB），就像打开了淘宝所有页面，
+虽然也能用，但打开速度肯定慢一些。
+
+
+================================================================================
+附加题：独立开发全流程经验
+================================================================================
+
+Q30（终极问题）：“这个项目是你一个人做的？从需求到部署，最大的坑是什么？”
+
+标准回答模板（请背诵）：
+
+“这个项目是我独立完成从 0 到 1 的，包括需求分析、架构设计、前端开发、部署上线。
+
+最大的难点在于‘预览区实时渲染’与‘高保真 PDF 导出’之间的性能平衡。
+
+举例来说：
+
+① PDF 分页算法：一开始我直接用 html2canvas 截长图裁剪，但发现文字会被截断。
+   后来调整为先用 JavaScript 计算每个模块在 A4 页面中的高度，按模块分页，
+   配合 CSS 的 page-break-inside: avoid 确保每个模块完整迁移到下一页。
+
+② 拖拽性能：最开始用 @dnd-kit 拖拽时，每次拖拽都会触发整个预览区重新渲染，
+   A4 预览区 DOM 结构复杂（794px × 多页），导致明显卡顿。后来我用 React.memo
+   包裹每个模块的预览组件 + useDebounce 防抖，显著减少了重绘次数。
+
+③ 中文 PDF 导出：jsPDF 默认不支持中文，最初直接在 PDF 上用 text() 方法写文字，
+   结果中文显示为方块。后来改为用 html2canvas 截图 + addImage 写入 PDF，
+   因为截图包含渲染好的字体，完美解决了中文问题。
+
+④ 部署方面：最开始我直接推送源代码到 GitHub Pages，结果白屏 —— 因为 GitHub Pages
+   不会编译 TypeScript。后来改用 GitHub Actions 自动构建（npm run build），
+   把 dist 产物推送到 Cloudflare Pages。又发现 Cloudflare 部署的是旧代码，
+   因为 push 没成功 —— 国内连 GitHub 不稳定，后面改用了 SSH 协议推送才搞定。
+
+如果让我再重构一次，我会：
+- 引入 Immer 简化不可变状态更新
+- 做路由懒加载优化首屏速度
+- 增加云备份功能（Firebase）提升数据安全性
+- 加 _headers 文件配置 CDN 缓存策略”
+
+【重要】面试官最想听到的不是你"做得多么完美"，而是你"遇到了什么问题、怎么解决的"。
+上面的回答突出了 3 个真实的技术难点 + 解决方案，这才是最有说服力的！
+
+
+================================================================================
+你的行动清单（面试前务必完成）
+================================================================================
+
+1. 打开 src/context/ResumeContext.tsx，看：
+   - pushHistory 函数（第21行）：保存快照到 past 数组
+   - HISTORY_MAX = 50（第11行）：最多保存 50 步
+   - UNDO 和 REDO（第167-179行）：从 past/future 数组取数据
+
+2. 打开 src/utils/pdf.ts，看：
+   - scale: 2（第7行）：二倍渲染
+   - 分页逻辑（第40-57行）：for 循环裁剪长图
+
+3. 打开 src/context/ResumeContext.tsx 第284-290行，看：
+   - 800ms 防抖自动保存
+
+4. 打开 src/hooks/useDebounce.ts，看：
+   - 默认 300ms 防抖
+
+5. 打开浏览器访问你的网站，按 F12 → Network，刷新看看：
+   - 你加载了哪些 JS 文件？大小是多少？（当前 ~872KB）
+   - index.html 里引用的 JS 文件路径
+
+6. 手画数据流向图：
+   用户操作 → dispatch(action) → reducer(newState) → React 重新渲染 →
+   预览区更新 → useEffect(800ms 防抖) → localStorage 保存
+
+================================================================================
