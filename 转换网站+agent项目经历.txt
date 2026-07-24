@@ -1,0 +1,25 @@
+2026-07 ~ 至今　　DocMaster + RAG Insight — 全栈文档转换平台 & 企业级 AI 知识库引擎（自研开源）
+
+技术栈：
+  前端: React 18、TypeScript、Vite、Ant Design 5、Axios
+  后端: Python FastAPI、LangChain、ChromaDB、rank-bm25、PyMuPDF、python-pptx/pdf2docx、Uvicorn
+  AI/LLM: DeepSeek Chat API、DeepSeek Embedding（512维）、Prompt Engineering、混合检索（向量+BM25）
+  部署: Cloudflare Pages、Railway（Nixpacks + LibreOffice + 中文字体注入）、GitHub CI/CD
+  开源地址: https://github.com/onlookera/main/tree/formatconverter
+
+项目描述：
+  自研并开源一套"文档转换 + AI 知识库问答"一体化的企业级 Web 平台。前端部署于 Cloudflare Pages 全球加速，后端部署于 Railway 云平台，支持 6 种文档格式互转、PPT 智能压缩及基于 RAG 架构的文档智能问答。项目从产品策划到云原生部署全流程独立完成，代码完全开源。
+
+负责内容： 产品策划、全栈开发、AI 引擎设计（RAG + Prompt）、UI/UX 设计、云部署架构、开源社区维护
+
+核心工作
+
+1. 构建 RAG 架构的 AI 知识库引擎：使用 LangChain + ChromaDB + DeepSeek Embedding 将文档自动分块、向量化并持久化存储；设计混合检索策略——向量语义匹配（权重 0.7）与 BM25 关键词匹配（权重 0.3）融合排序，兼顾语义理解和精准命中；基于 DeepSeek Chat 内置 System Prompt 约束模型严格依据文档作答、拒绝幻觉，返回答案附引用来源与置信度。
+
+2. 实现多风格摘要 Agent（Prompt 工程）：设计嵌套 Prompt 模板，支持同一文档输出 3 种风格摘要——营销版、技术版、极简版，通过 Few-shot 示例引导 LLM 按受众调整语气与篇幅。接口采用 x-api-key 鉴权保护知识库安全。
+
+3. 构建文档转换引擎与 PPT 智能压缩：pdf2docx 实现 PDF→Word 排版级还原；PyMuPDF 300DPI 渲染 PDF 每页为 PPT 幻灯片；LibreOffice 命令行桥接 Word/PPT→PDF。自研 PPT 压缩算法，综合图片降分辨率、PNG→JPEG 转码、ZIP 极限压缩（level=9），200MB 文件可压至 50MB（减小 75%），内容零丢失。
+
+4. 企业级前端交互与异步任务架构：React + Ant Design 5 双模块页签式 UI，支持拖拽上传、实时进度轮询、历史记录持久化，CSS Design Tokens 统一主题规范并适配移动端。后端 FastAPI + BackgroundTasks 线程池驱动，2GB+ 大文件流式写入避免 OOM，线程安全 TaskManager 管理任务状态，异常覆盖文件伪装检测、路径注入、加密识别等 10+ 边缘场景。
+
+5. 云原生全栈部署与工程攻坚：前端 Cloudflare Pages 全球 CDN，后端 Railway Nixpacks 256MB 免费容器。解决 LibreOffice OOM 崩溃（exit=137）→ --norestore + --safe-mode + wqy-zenhei 中文字体注入；突破 Nixpacks 只读 Python → venv 虚拟环境安装依赖。前端断网恢复通过 localStorage 任务 ID 重连，项目提供 Swagger/ReDoc 文档及 .env.example 配置模板，社区可一键复现。

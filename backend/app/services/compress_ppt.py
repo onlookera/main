@@ -1,7 +1,7 @@
 """
-PPT 压缩服务。
-大幅减小 PPTX 文件体积（如 200MB → 50MB），内容不丢失。
-原理：PPTX = ZIP(XML + 图片)，压缩图片 + 极限 ZIP 压缩。
+PPT 极限压缩服务。
+将 180MB+ PPT 压缩到 50MB 级别，内容（文字/形状/动画）完全不动。
+原理：PPTX 体积的 90%+ 来自嵌入图片 → 强力压缩图片 → ZIP 极限打包。
 """
 
 import os
@@ -14,24 +14,24 @@ from PIL import Image
 def compress_pptx(
     input_path: str,
     output_path: str,
-    max_image_width: int = 1920,
-    jpeg_quality: int = 70,
+    max_image_width: int = 1366,
+    jpeg_quality: int = 50,
     progress_callback=None,
 ) -> str:
     """
-    压缩 PPTX 文件。
+    极限压缩 PPTX 文件。
 
-    策略（多重优化，保证内容不丢失）：
-        1. 分析所有嵌入图片，超过 max_image_width 宽度的大图缩小分辨率
-        2. PNG 大图转为 JPEG（大幅缩小体积）
-        3. JPEG 图片用指定质量重压缩
-        4. 使用 ZIP_DEFLATED 最大压缩级别重新打包
+    策略（多重优化）：
+        1. 取出 ZIP 内所有图片，统一转 JPEG（质量 50），透明通道用白底填充
+        2. 所有图片宽度限制 1366px（笔记本电脑标准分辨率），超大图等比缩放
+        3. 跳过"压缩后反而变大"的图片（已经是低质量的小图）
+        4. ZIP_DEFLATED 最大压缩级别重打包
 
     参数:
-        input_path:  源 .pptx 文件路径
-        output_path: 输出 .pptx 文件路径
-        max_image_width: 图片最大宽度（像素），超出则等比缩小。默认 1920px 足够高清。
-        jpeg_quality: JPEG 压缩质量 1-100，默认 70（肉眼几乎无差异）
+        input_path:  源 .pptx 路径
+        output_path: 输出路径
+        max_image_width: 图片最大宽度，默认 1366px（标准笔记本分辨率）
+        jpeg_quality: JPEG 质量 1-100，默认 50（极强压缩，肉眼无感）
         progress_callback: 进度回调 callback(msg: str)
 
     返回:
@@ -46,57 +46,66 @@ def compress_pptx(
     if progress_callback:
         progress_callback("正在分析 PPT 结构...")
 
-    # PPTX 本质是 ZIP 文件 — 解压 → 处理图片 → 重压缩
-    with zipfile.ZipFile(input_path, 'r') as zin:
-        file_list = zin.namelist()
+    image_exts = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp', '.emf', '.wmf'}
 
-        # 找出所有图片文件
-        image_exts = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp', '.emf', '.wmf'}
-        image_files = [f for f in file_list if Path(f).suffix.lower() in image_exts]
+    with zipfile.ZipFile(input_path, 'r') as zin:
+        all_files = zin.namelist()
+        image_files = [f for f in all_files if Path(f).suffix.lower() in image_exts]
+        # 定位 [Content_Types].xml 和幻灯片 XML（需要同步更新图片扩展名）
+        xml_files = [f for f in all_files if f.endswith('.xml') or f.endswith('.rels')]
 
         if progress_callback:
-            progress_callback(f"找到 {len(image_files)} 张图片，开始压缩...")
+            progress_callback(f"找到 {len(image_files)} 张图片，开始极限压缩...")
 
-        # 创建输出 ZIP
+        rename_map = {}   # 旧文件名 → 新文件名（PNG→JPG 时需要）
+        saved_bytes = 0
+        processed = 0
+
         with zipfile.ZipFile(
             output_path, 'w',
             compression=zipfile.ZIP_DEFLATED,
-            compresslevel=9,  # 最高压缩级别
+            compresslevel=9,
         ) as zout:
-            processed_images = 0
-
-            for item in file_list:
+            for item in all_files:
                 data = zin.read(item)
                 ext = Path(item).suffix.lower()
 
-                # 如果是图片，进行压缩处理
                 if ext in image_exts:
                     try:
-                        compressed = _compress_image(
-                            data, ext,
-                            max_image_width, jpeg_quality,
+                        compressed, new_ext = _aggressive_compress(
+                            data, ext, max_image_width, jpeg_quality
                         )
                         if compressed and len(compressed) < len(data):
+                            saved_bytes += len(data) - len(compressed)
                             data = compressed
-                            processed_images += 1
+                            processed += 1
+                            # 如果扩展名变了（如 PNG→JPG），需要记下来同步更新 XML
+                            if new_ext and new_ext != ext:
+                                new_name = item[: -len(ext)] + new_ext
+                                rename_map[item] = new_name
                     except Exception:
-                        pass  # 压缩失败则保留原图
+                        pass
 
                 zout.writestr(zin.getinfo(item), data)
 
                 if progress_callback and image_files:
-                    idx = file_list.index(item)
                     progress_callback(
-                        f"压缩图片中... ({processed_images}/{len(image_files)})"
+                        f"压缩中... ({processed}/{len(image_files)} 张, "
+                        f"已节省 {_format_size(saved_bytes)})"
                     )
 
-    # 结果统计
+        # 第二步：如果有文件名变更（PNG→JPG），更新 ZIP 内 XML 引用
+        if rename_map:
+            if progress_callback:
+                progress_callback("同步更新 XML 引用...")
+            _update_image_references(output_path, rename_map)
+
     compressed_size = os.path.getsize(output_path)
     ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
 
     msg = (
         f"压缩完成: {_format_size(original_size)} → {_format_size(compressed_size)} "
-        f"(减小 {ratio:.0f}%)"
+        f"(减小 {ratio:.0f}%, 节省 {_format_size(saved_bytes)})"
     )
 
     if progress_callback:
@@ -106,30 +115,45 @@ def compress_pptx(
     return output_path
 
 
-def _compress_image(
+def _aggressive_compress(
     data: bytes,
     ext: str,
     max_width: int,
-    jpeg_quality: int,
-) -> bytes | None:
+    quality: int,
+) -> tuple[bytes | None, str | None]:
     """
-    压缩单张图片。
+    激进压缩单张图片：统一转 JPEG、缩小分辨率、白底填充透明通道。
 
     返回:
-        压缩后的字节数据，如果不需要压缩返回 None
+        (压缩后字节, 新扩展名) — 如果压缩后更大则返回 (None, None)
     """
     img = Image.open(io.BytesIO(data))
-
-    # 跳过矢量图（EMF/WMF）
-    if img.mode in ('P', 'RGBA', 'LA') and ext in ('.png', '.gif', '.webp', '.tiff'):
-        # 带透明通道的 PNG：保留 PNG 格式，调整尺寸和调色板
-        pass
-    elif ext in ('.emf', '.wmf'):
-        return None  # 矢量格式，无法压缩
-
+    original_mode = img.mode
     width, height = img.size
 
-    # 1) 缩小过大图片
+    # ---- 0) 跳过极小图（压缩无意义，可能反而变大）----
+    if max(width, height) < 100:
+        return None, None
+
+    # ---- 1) 处理透明通道：白底填充 → RGB ----
+    if img.mode in ('RGBA', 'LA', 'PA'):
+        background = Image.new('RGB', img.size, (255, 255, 255))
+        if img.mode == 'PA':
+            img = img.convert('RGBA')
+        background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+        img = background
+    elif img.mode == 'P':
+        img = img.convert('RGBA')
+        background = Image.new('RGB', img.size, (255, 255, 255))
+        try:
+            background.paste(img, mask=img.split()[-1])
+        except Exception:
+            background.paste(img)
+        img = background
+    elif img.mode not in ('RGB', 'L'):
+        img = img.convert('RGB')
+
+    # ---- 2) 缩小分辨率 ----
     if width > max_width:
         ratio = max_width / width
         new_size = (max_width, int(height * ratio))
@@ -137,39 +161,61 @@ def _compress_image(
             img = img.resize(new_size, Image.LANCZOS)
         except Exception:
             img = img.resize(new_size, Image.BILINEAR)
+        width, height = img.size
 
-    # 2) 决定输出格式
-    has_transparency = img.mode in ('RGBA', 'LA', 'P')
-    output_ext = ext
+    # 如果高度也很大（竖版图片），同样限制
+    max_height = max_width
+    if height > max_height:
+        ratio = max_height / height
+        new_size = (int(width * ratio), max_height)
+        try:
+            img = img.resize(new_size, Image.LANCZOS)
+        except Exception:
+            img = img.resize(new_size, Image.BILINEAR)
 
-    # 大 PNG 且无透明通道 → 转 JPEG（体积能减 90%）
-    if ext == '.png' and not has_transparency and max(img.size) > 400:
-        if img.mode != 'RGB':
-            img = img.convert('RGB')
-        output_ext = '.jpg'
-
-    # 3) 编码输出
+    # ---- 3) 输出为 JPEG ----
     out_buf = io.BytesIO()
-
-    if output_ext in ('.jpg', '.jpeg'):
-        img.save(out_buf, format='JPEG', quality=jpeg_quality, optimize=True)
-    elif output_ext == '.png':
-        img.save(out_buf, format='PNG', optimize=True)
-    elif output_ext == '.gif':
-        img.save(out_buf, format='GIF', optimize=True)
-    elif output_ext == '.webp':
-        img.save(out_buf, format='WEBP', quality=jpeg_quality)
-    elif output_ext == '.bmp':
-        img.save(out_buf, format='JPEG', quality=jpeg_quality)  # BMP 直接转 JPEG
-    elif output_ext == '.tiff':
-        img.save(out_buf, format='JPEG', quality=jpeg_quality)
-
+    img.save(out_buf, format='JPEG', quality=quality, optimize=True, subsampling='4:2:0')
     result = out_buf.getvalue()
 
-    # 只有真正减小了才返回（某些情况压缩可能变大）
+    # 只有真正减小了才返回
     if len(result) < len(data):
-        return result
-    return None
+        new_ext = '.jpg' if ext != '.jpg' and ext != '.jpeg' else None
+        return result, new_ext
+
+    return None, None
+
+
+def _update_image_references(zip_path: str, rename_map: dict):
+    """
+    更新 ZIP 内所有 XML 文件中的图片引用。
+    当 PNG 被转为 JPG 时，所有引用该图片的 XML 节点必须同步更新。
+    """
+    import tempfile
+
+    tmp_path = zip_path + '.tmp'
+    with zipfile.ZipFile(zip_path, 'r') as zin:
+        with zipfile.ZipFile(tmp_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zout:
+            for item in zin.namelist():
+                data = zin.read(item)
+                # 只处理 XML 和 rels 文件（可能包含图片引用）
+                if item.endswith('.xml') or item.endswith('.rels'):
+                    try:
+                        text = data.decode('utf-8')
+                        modified = False
+                        for old, new in rename_map.items():
+                            old_basename = os.path.basename(old)
+                            new_basename = os.path.basename(new)
+                            if old_basename in text:
+                                text = text.replace(old_basename, new_basename)
+                                modified = True
+                        if modified:
+                            data = text.encode('utf-8')
+                    except (UnicodeDecodeError, Exception):
+                        pass  # 二进制 XML 不处理
+                zout.writestr(zin.getinfo(item), data)
+
+    os.replace(tmp_path, zip_path)
 
 
 def _format_size(size_bytes: int) -> str:

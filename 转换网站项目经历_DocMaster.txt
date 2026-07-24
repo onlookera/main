@@ -1,0 +1,17 @@
+2026-07 ~ 至今　　DocMaster 全能文档格式转换平台 — 自研开源 · 企业级 · 全栈项目
+技术栈： React 18、TypeScript、Vite、Ant Design 5、Python FastAPI、pdf2docx、PyMuPDF、Uvicorn、GitHub、Cloudflare Pages、Railway
+项目描述： 自研并开源一套支持 PDF、Word、PPT 相互转换的企业级 Web 应用平台，解决市面上文档转换工具要么收费受限、要么需要上传至第三方服务器存在隐私泄露风险的痛点。项目采用前后端分离架构，前端部署于 Cloudflare Pages 全球 CDN，后端部署于 Railway 云平台，实现全自动 CI/CD 发布流程。
+开源地址： https://github.com/onlookera/main/tree/formatconverter
+负责内容： 产品策划、全栈开发、UI/UX 设计、云部署架构、开源社区维护
+
+核心工作
+
+1. 设计并实现高还原度文档转换引擎：基于 pdf2docx 实现 PDF→Word 排版级转换，保留原始表格、图片与段落结构；采用 PyMuPDF (fitz) 300DPI 高清渲染 PDF→PPT，以图片级精度嵌入每页幻灯片；通过 LibreOffice 命令行桥接实现 Word/PPT→PDF 高保真转换，同时以 python-pptx + python-docx 纯 Python 方案作为 PPT→Word 文本提取回退，构建覆盖 6 种转换路径的完整闭环。
+
+2. 构建企业级前端交互体系：基于 React 18 + Ant Design 5 设计极简卡片式 UI，实现拖拽上传（含渐变霓虹边框呼吸动画、悬浮粒子动效）、实时百分比进度轮询、历史记录持久化、一键下载等核心交互；通过 CSS 自定义属性设计令牌系统（Design Tokens），实现统一的品牌色、间距、圆角与阴影规范；适配移动端响应式布局，兼顾 PC 与手机端体验。
+
+3. 实现高性能异步任务架构：后端采用 FastAPI + BackgroundTasks 线程池处理转换任务，支持大文件（2GB+）流式写入磁盘而非全量读入内存；设计线程安全的 TaskManager 内存字典管理任务状态，1 秒级轮询精度反馈转换进度；异常处理覆盖文件格式校验、加密检测、大小限制、LibreOffice OOM 自动降级等 10 余种边缘场景。
+
+4. 解决云原生部署中的多环境适配难题：前端部署于 Cloudflare Pages 全球加速，后端适配 Railway (Nixpacks Linux 容器)，打通跨域 CORS 与环境变量驱动的 API 地址动态切换；攻坚 LibreOffice 在 256MB 内存限制容器中的 OOM 崩溃问题（exit=137），通过 `--norestore --safe-mode` 参数优化及中文字体包（wqy-zenhei）注入，最终在免费套餐内实现完整文档转换功能。
+
+5. 建立开放的开源项目生态：项目完全开源托管于 GitHub，提供中英文双语 README、完整 API 文档（Swagger/ReDoc）、项目规划文件及 .gitignore 规范；采用 Git Workflow 分支管理，持续迭代功能与修复 Issue，为开发者社区提供可直接 Fork 使用的文档转换基础设施。

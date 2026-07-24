@@ -192,11 +192,11 @@ def _execute_conversion(task_id: str, conversion_type: str, extra_task_ids=None)
             output_filename = get_output_filename(task.filename, 'zip')
 
         elif conversion_type == 'ppt_compress':
-            # PPT 压缩：图片优化 + ZIP 极限压缩（内容不丢失）
+            # PPT 极限压缩：强制统一 JPEG(质量50) + 缩至1366px + ZIP极限打包
             compress_pptx(
                 input_path, output_path,
-                max_image_width=1920,
-                jpeg_quality=70,
+                max_image_width=1366,
+                jpeg_quality=50,
                 progress_callback=lambda msg: on_progress(50),
             )
             on_progress(100)
